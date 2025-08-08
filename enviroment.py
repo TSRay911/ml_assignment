@@ -103,6 +103,7 @@ class LifeStyleCoachEnv(gym.Env):
         }
     
     def _calculate_bmi(self):
+        
         if self.height_cm <= 0:
             return 0.0
 
