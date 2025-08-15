@@ -4,7 +4,7 @@ import numpy as np
 
 class LifeStyleCoachEnv(gym.Env):
 
-    def __init__(self, initial_weight_kg: float = 80, height_cm: float = 165, age: int = 22,
+    def __init__(self, initial_weight_kg: float = 65, height_cm: float = 170, age: int = 22,
                  gender: int = 0, target_bmi: float = 20, stress_range: tuple[float, float] = (1.0, 100.0),
                  days_per_episode: int = 28):
         
@@ -45,7 +45,7 @@ class LifeStyleCoachEnv(gym.Env):
             "daily_protein_intake": spaces.Box(low=0.0, high=300.0, shape=(), dtype=np.float32),
             "daily_fat_intake": spaces.Box(low=0.0, high=150.0, shape=(), dtype=np.float32),
             "daily_saturated_fat_intake": spaces.Box(low=0.0, high=50.0, shape=(), dtype=np.float32),
-            "daily_carbohydrate_intake": spaces.Box(low=0.0, high=700.0, shape=(), dtype=np.float32),
+            "daily_carbs_intake": spaces.Box(low=0.0, high=700.0, shape=(), dtype=np.float32),
             "daily_fiber_intake": spaces.Box(low=0.0, high=60.0, shape=(), dtype=np.float32),
             "current_weight_kg": spaces.Box(low=40.0, high=300.0, shape=(), dtype=np.float32),
             "stress_level": spaces.Box(low=self.min_stress_level, high=self.max_stress_level, shape=(), dtype=np.float32),
@@ -78,7 +78,7 @@ class LifeStyleCoachEnv(gym.Env):
             "daily_protein_intake": self.state["daily_protein_intake"],
             "daily_fat_intake": self.state["daily_fat_intake"],
             "daily_saturated_fat_intake": self.state["daily_saturated_fat_intake"],
-            "daily_carbohydrate_intake": self.state["daily_carbohydrate_intake"],
+            "daily_carbs_intake": self.state["daily_carbs_intake"],
             "daily_fiber_intake": self.state["daily_fiber_intake"],
             "current_weight_kg": self.state["current_weight_kg"],
             "stress_level": self.state["stress_level"],
@@ -104,8 +104,10 @@ class LifeStyleCoachEnv(gym.Env):
             "days_remaining": self.days_per_episode - self.state["day_of_episode"]
         }
 
-    def reset(self, seed=None):
+    def reset(self, *, seed=None, options=None):
+
         super().reset(seed=seed)
+
         self.state.update({
             "last_action_type": None,
             "current_weight_kg": self.initial_weight_kg,
@@ -115,7 +117,7 @@ class LifeStyleCoachEnv(gym.Env):
             "daily_calories_burned": 0.0,
             "daily_protein_intake": 0.0,
             "daily_fat_intake": 0.0,
-            "daily_carbohydrate_intake": 0.0,
+            "daily_carbs_intake": 0.0,
             "daily_saturated_fat_intake": 0.0,
             "daily_fiber_intake": 0.0,
             "stress_level": (self.min_stress_level + self.max_stress_level) / 2,
@@ -149,6 +151,7 @@ class LifeStyleCoachEnv(gym.Env):
         current_hour = self.state["time_of_day_slot"]
         event = self.daily_schedule[current_hour]
         nutrient_keys = ["protein", "fat", "saturated_fat", "carbs", "fiber"]
+        truncated = False
 
         action_type = action.get("action_type", 0)
 
@@ -173,9 +176,10 @@ class LifeStyleCoachEnv(gym.Env):
 
             if action_type == 0:
                 nutrients = action.get("nutrients", np.zeros(5, dtype=np.float32))
+                nutrients = np.asarray(nutrients, dtype=np.float32).flatten()
                 meal_calories = nutrients[0]*4 + nutrients[1]*9 + nutrients[2]*9 + nutrients[3]*4 + nutrients[4]*2
                 for i, key in enumerate(nutrient_keys):
-                    self.state[f"daily_{key}_intake"] += nutrients[i]
+                    self.state[f"daily_{key}_intake"] += float(nutrients[i])
 
                 self.state["daily_calories_intake"] += meal_calories
                 reward += self._calculate_reward(action_type, nutrients)
@@ -196,7 +200,7 @@ class LifeStyleCoachEnv(gym.Env):
 
         self.state["time_of_day_slot"] += 1
 
-        done = False
+        terminated = False
         if self.state["time_of_day_slot"] >= self.slots_per_day:
 
             self.state["time_of_day_slot"] = 0
@@ -211,9 +215,9 @@ class LifeStyleCoachEnv(gym.Env):
                 self.state[key] = 0.0
 
             reward += daily_bmi_reward + daily_nutrient_reward
-            done = self.state["day_of_episode"] >= self.days_per_episode
+            terminated = self.state["day_of_episode"] >= self.days_per_episode
 
-        return self._get_obs(), reward, done, self._get_info()
+        return self._get_obs(), reward, terminated, truncated, self._get_info()
 
     def _calculate_reward(self, action_type: int, nutrients: np.ndarray = None) -> float:
 
