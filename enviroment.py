@@ -243,7 +243,7 @@ class LifeStyleCoachEnv(gym.Env):
             reward += 1 - (self.state["stress_level"] - stress_threshold) / (self.max_stress_level - stress_threshold)
 
         # Small step penalty
-        reward -= 0.5  # or 0.1 depending on scale
+        reward -= 0.1  
 
         return self._get_obs(), reward, terminated, truncated, self._get_info()
 
