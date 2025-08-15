@@ -214,7 +214,7 @@ class LifeStyleCoachEnv(gym.Env):
                 1 - abs(self.state[f"daily_{key}_intake"] - self.daily_targets_g[key]) / max(self.daily_targets_g[key], 0.0001)
                 for key in nutrient_keys
             )
-            
+
             daily_nutrient_reward *=1.25
             daily_bmi_reward *= 2
 
@@ -241,6 +241,9 @@ class LifeStyleCoachEnv(gym.Env):
             reward += 0.5
         else:
             reward += 1 - (self.state["stress_level"] - stress_threshold) / (self.max_stress_level - stress_threshold)
+
+        # Small step penalty
+        reward -= 0.5  # or 0.1 depending on scale
 
         return self._get_obs(), reward, terminated, truncated, self._get_info()
 
