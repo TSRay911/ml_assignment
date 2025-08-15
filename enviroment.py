@@ -1,156 +1,99 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-import pandas as pd
-import random
 
 class LifeStyleCoachEnv(gym.Env):
 
-    # Static parameters to initialize environment
-    def __init__(self, inital_weight_kg: float = 80, height_cm: float = 165, age: int = 22,
+    def __init__(self, initial_weight_kg: float = 80, height_cm: float = 165, age: int = 22,
                  gender: int = 0, target_bmi: float = 20, stress_range: tuple[float, float] = (1.0, 100.0),
-                 energy_range: tuple[float, float] = (0.0, 100.0), days_per_episode: int = 28):
-    
-        super(LifeStyleCoachEnv, self).__init__()
-
-        # Static variables
-        self.initial_weight_kg = inital_weight_kg
+                 days_per_episode: int = 28):
+        
+        super().__init__()
+        self.initial_weight_kg = initial_weight_kg
         self.height_cm = height_cm
         self.age = age
-        self.gender = gender
+        self.gender = gender  
         self.target_bmi = target_bmi
-        self.min_energy_range, self.max_energy_range = energy_range
         self.days_per_episode = days_per_episode
         self.min_stress_level, self.max_stress_level = stress_range
-
-        self.daily_calories_goal = self.calculate_daily_calories()
-
-        self.daily_targets = {
-            "protein": 0.2,          # 20% of calories
-            "fat": 0.3,              # 30% of calories
-            "saturated_fat": 0.1,    # 10% of calories
-            "carbs": 0.5,            # 50% of calories
-            "fiber": 30              # g/day
-        }
-
-        self.daily_targets_g = {
-            "protein": (self.daily_targets["protein"] * self.daily_calories_goal) / 4,
-            "fat": (self.daily_targets["fat"] * self.daily_calories_goal) / 9,
-            "saturated_fat": (self.daily_targets["saturated_fat"] * self.daily_calories_goal) / 9,
-            "carbs": (self.daily_targets["carbs"] * self.daily_calories_goal) / 4,
-            "fiber": self.daily_targets["fiber"]  
-        }
-
-        meals_per_day = 3
-        self.meal_targets = {}
-
-        for nutrient, total_grams in self.daily_targets_g.items():
-            self.meal_targets[nutrient] = total_grams / meals_per_day
-
-
-        # Dynamic variables
-        self.state = {
-            "current_weight_kg": self.initial_weight_kg,
-            "time_of_day_slot": 0,
-            "day_of_episode": 0,
-            "daily_calories_intake": 0.0,
-            "daily_calories_burned": 0.0,
-            "daily_protein_intake": 0.0,
-            "daily_fat_intake": 0.0,
-            "daily_carbohydrate_intake": 0.0,
-            "daily_saturated_fat_intake": 0.0,
-            "daily_fiber_intake": 0.0,
-            "stress_level": (self.min_stress_level + self.max_stress_level) / 2, 
-            "weight_history": [],
-            "stress_history": [],
-            "energy_level": (self.min_energy_range + self.max_energy_range) / 2,
-            "energy_history": []
-        }
-
+        self.state = {}
         self.slots_per_day = 24
         self.daily_schedule = ['agent_controlled_action'] * self.slots_per_day
 
-        work_slots = [(10, 12), (13, 17)]
+        # Setup schedule
+        for start, end in [(10, 12), (13, 17)]:
+            for h in range(start, end):
+                self.daily_schedule[h] = 'work'
+        for h in range(6):
+            self.daily_schedule[h] = 'sleep'
+        for h in range(22, 24):
+            self.daily_schedule[h] = 'sleep'
 
-        # 10 am - 12 pm work, 12 pm to 1 pm break, 1 pm to 6 pm work
-        for start_hour, end_hour in work_slots:
-            for hour in range(start_hour, end_hour):
-                self.daily_schedule[hour] = 'work'
-        
-        # 10 pm sleep and 6am wake up
-        for hour in range(6): 
-            self.daily_schedule[hour] = 'sleep'
-        for hour in range(22, 24):
-            self.daily_schedule[hour] = 'sleep'
+        self.daily_targets = {
+            "protein": 0.18,
+            "fat": 0.26,
+            "saturated_fat": 0.05,
+            "carbs": 0.51,
+            "fiber": 30
+        }
 
-
-        self.observation_space = gym.spaces.Dict(
-            {
-                "current_timeslot": gym.spaces.Discrete(24),
-                "current_bmi": gym.spaces.Box(low=10.0, high=80.0, shape=(), dtype=np.float32),
-                "daily_calories_intake": gym.spaces.Box(low=0.0, high=6000.0, shape=(), dtype=np.float32),
-                "daily_calories_burned": gym.spaces.Box(low=0.0, high=6000.0, shape=(), dtype=np.float32),
-                "daily_protein_intake": gym.spaces.Box(low=0.0, high=300.0, shape=(), dtype=np.float32),
-                "daily_fat_intake": gym.spaces.Box(low=0.0, high=150.0, shape=(), dtype=np.float32),
-                "daily_saturated_fat_intake": gym.spaces.Box(low=0.0, high=50.0, shape=(), dtype=np.float32),
-                "daily_carbohydrate_intake": gym.spaces.Box(low=0.0, high=700.0, shape=(), dtype=np.float32),
-                "daily_fiber_intake": gym.spaces.Box(low=0.0, high=60.0, shape=(), dtype=np.float32),
-                "current_weight_kg": gym.spaces.Box(low=40.0, high=300.0, shape=(), dtype=np.float32),
-                "stress_level": gym.spaces.Box(low=self.min_stress_level, high=self.max_stress_level, shape=(), dtype=np.float32),
-                "day_of_episode": gym.spaces.Box(low=0, high=self.days_per_episode, shape=(), dtype=np.int32),
-                "energy_level": gym.spaces.Box(low=self.min_energy_range, high=self.max_energy_range, shape=(), dtype=np.float32)
-            }
-        )
-
-        self.action_space = spaces.Dict({
-            "action_type": spaces.Discrete(3), 
-            "action_details": spaces.MultiDiscrete([
-                4, 4, 4, 4, 4,    # Meal choices
-                3,                # Exercise choices
-                2                 # Rest choices
-            ])
+        self.observation_space = spaces.Dict({
+            "current_timeslot": spaces.Discrete(24),
+            "current_bmi": spaces.Box(low=10.0, high=80.0, shape=(), dtype=np.float32),
+            "daily_calories_intake": spaces.Box(low=0.0, high=6000.0, shape=(), dtype=np.float32),
+            "daily_calories_burned": spaces.Box(low=0.0, high=6000.0, shape=(), dtype=np.float32),
+            "daily_protein_intake": spaces.Box(low=0.0, high=300.0, shape=(), dtype=np.float32),
+            "daily_fat_intake": spaces.Box(low=0.0, high=150.0, shape=(), dtype=np.float32),
+            "daily_saturated_fat_intake": spaces.Box(low=0.0, high=50.0, shape=(), dtype=np.float32),
+            "daily_carbohydrate_intake": spaces.Box(low=0.0, high=700.0, shape=(), dtype=np.float32),
+            "daily_fiber_intake": spaces.Box(low=0.0, high=60.0, shape=(), dtype=np.float32),
+            "current_weight_kg": spaces.Box(low=40.0, high=300.0, shape=(), dtype=np.float32),
+            "stress_level": spaces.Box(low=self.min_stress_level, high=self.max_stress_level, shape=(), dtype=np.float32),
+            "day_of_episode": spaces.Box(low=0, high=self.days_per_episode, shape=(), dtype=np.int32),
         })
 
+        self.action_space = spaces.Dict({
+            "action_type": spaces.Discrete(3),
+            "nutrients": spaces.Box(low=np.array([0.0]*5, dtype=np.float32),
+                                     high=np.array([120.0, 60.0, 8.0, 50.0, 20.0], dtype=np.float32),
+                                     dtype=np.float32),
+            "exercise_level": spaces.Discrete(3),
+            "rest_choice": spaces.Discrete(2)
+        })
 
     def calculate_daily_calories(self):
-        weight = self.state["current_weight_kg"]
-        gender = self.gender  
-        if gender == 0:
-            return weight * 30  
-        else:
-            return weight * 28  
-
-
+        weight = self.state.get("current_weight_kg", self.initial_weight_kg)
+        return weight * (30 if self.gender == 0 else 28)
 
     def _calculate_bmi(self):
-        
-        if self.height_cm <= 0:
-            return 0.0
-
-        return self.state["current_weight_kg"] / ((self.height_cm / 100) ** 2)
-
+        weight = self.state.get("current_weight_kg", self.initial_weight_kg)
+        return weight / ((self.height_cm / 100) ** 2) if self.height_cm > 0 else 0.0
 
     def _get_obs(self):
-
-        current_bmi = self._calculate_bmi()
-
-        return {
+        obs_map = {
             "current_timeslot": self.state["time_of_day_slot"],
-            "current_bmi": np.array(current_bmi, dtype=np.float32),
-            "daily_calories_intake": np.array(self.state["daily_calories_intake"], dtype=np.float32),
-            "daily_calories_burned": np.array(self.state["daily_calories_burned"], dtype=np.float32),
-            "daily_protein_intake": np.array(self.state["daily_protein_intake"], dtype=np.float32),
-            "daily_fat_intake": np.array(self.state["daily_fat_intake"], dtype=np.float32),
-            "daily_saturated_fat_intake": np.array(self.state["daily_saturated_fat_intake"], dtype=np.float32),
-            "daily_carbohydrate_intake": np.array(self.state["daily_carbohydrate_intake"], dtype=np.float32),
-            "daily_fiber_intake": np.array(self.state["daily_fiber_intake"], dtype=np.float32),
-            "current_weight_kg": np.array(self.state["current_weight_kg"], dtype=np.float32),
-            "stress_level": np.array(self.state["stress_level"], dtype=np.float32), 
-            "day_of_episode": np.array(self.state["day_of_episode"], dtype=np.int32),
-            "energy_level": np.array(self.state["energy_level"], dtype=np.float32)
+            "current_bmi": self._calculate_bmi(),
+            "daily_calories_intake": self.state["daily_calories_intake"],
+            "daily_calories_burned": self.state["daily_calories_burned"],
+            "daily_protein_intake": self.state["daily_protein_intake"],
+            "daily_fat_intake": self.state["daily_fat_intake"],
+            "daily_saturated_fat_intake": self.state["daily_saturated_fat_intake"],
+            "daily_carbohydrate_intake": self.state["daily_carbohydrate_intake"],
+            "daily_fiber_intake": self.state["daily_fiber_intake"],
+            "current_weight_kg": self.state["current_weight_kg"],
+            "stress_level": self.state["stress_level"],
+            "day_of_episode": self.state["day_of_episode"]
         }
-    
-    
+        obs = {}
+        for k, v in obs_map.items():
+            if isinstance(v, float):
+                obs[k] = np.array(v, dtype=np.float32)
+            elif isinstance(v, int):
+                obs[k] = np.array(v, dtype=np.int32)
+            else:
+                obs[k] = v
+        return obs
+
     def _get_info(self):
         return {
             "bmi_progress": self.target_bmi - self._calculate_bmi(),
@@ -164,6 +107,7 @@ class LifeStyleCoachEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
         self.state.update({
+            "last_action_type": None,
             "current_weight_kg": self.initial_weight_kg,
             "time_of_day_slot": 0,
             "day_of_episode": 0,
@@ -177,126 +121,109 @@ class LifeStyleCoachEnv(gym.Env):
             "stress_level": (self.min_stress_level + self.max_stress_level) / 2,
             "weight_history": [],
             "stress_history": [],
-            "energy_level": (self.min_energy_range + self.max_energy_range) / 2,
-            "energy_history": [],
         })
+
+        self.daily_calories_goal = self.calculate_daily_calories()
+        self.daily_targets_g = {}
+
+        self.daily_targets_g = { 
+            "protein": (self.daily_targets["protein"] * self.daily_calories_goal) / 4, 
+            "fat": (self.daily_targets["fat"] * self.daily_calories_goal) / 9, 
+            "saturated_fat": (self.daily_targets["saturated_fat"] * self.daily_calories_goal) / 9, 
+            "carbs": (self.daily_targets["carbs"] * self.daily_calories_goal) / 4, 
+            "fiber": self.daily_targets["fiber"] 
+            } 
+        
+        meals_per_day = 3 
+
+        self.nutrients_target_per_meal = {
+            nutrient: total_grams / meals_per_day 
+            for nutrient, total_grams in self.daily_targets_g.items()
+        } 
+
         return self._get_obs(), self._get_info()
-    
+
     def step(self, action):
-        done = False
+
+        reward = 0.0
         current_hour = self.state["time_of_day_slot"]
         event = self.daily_schedule[current_hour]
-        reward = 0.0
+        nutrient_keys = ["protein", "fat", "saturated_fat", "carbs", "fiber"]
 
+        action_type = action.get("action_type", 0)
+
+        # Handle sleep/work
         if event == "sleep":
-            self.state["stress_level"] = max(self.min_stress_level, self.state["stress_level"] - 5)
-            self.state["energy_level"] = min(self.max_energy_level, self.state["energy_level"] + 10)
-            weight = self.state["current_weight_kg"]
-            sleep_met = 0.9  
-            minutes_sleep = 8 * 60  
-            calories_burned_sleep = (sleep_met * weight * 3.5 / 200) * minutes_sleep
-            self.state["daily_calories_burned"] += calories_burned_sleep
+
+            self.state["stress_level"] = max(self.min_stress_level, self.state["stress_level"] - 2)
+            self.state["daily_calories_burned"] += (0.9 * self.state["current_weight_kg"] * 3.5 / 200) * (8*60)
 
         elif event == "work":
-            # Work increases stress and burns calories
+
             self.state["stress_level"] = min(self.max_stress_level, self.state["stress_level"] + 4)
-            self.state["energy_level"] = max(self.min_energy_level, self.state["energy_level"] - 6)
-            weight = self.state["current_weight_kg"]
-            work_met = 2.0  
-            minutes_work = 60  
-            calories_burned_work = (work_met * weight * 3.5 / 200) * minutes_work
-            self.state["daily_calories_burned"] += calories_burned_work
+            self.state["daily_calories_burned"] += (2.0 * self.state["current_weight_kg"] * 3.5 / 200) * 60
 
         else:
 
-            action_type = action["action_type"]
-            details = action["action_details"]
+            # Penalize repeated action
+            if self.state.get("last_action_type") == action_type:
+                reward -= 0.5
 
-            if action_type == 0:  # Eat
+            self.state["last_action_type"] = action_type
 
-                carb_g = [0, 30, 50, 70]      
-                protein_g = [0, 10, 20, 30]       
-                fat_g = [0, 5, 10, 15]           
-                sat_fat_g = [0, 2, 4, 6]          
-                fiber_g = [0, 5, 10, 15]          
+            if action_type == 0:
+                nutrients = action.get("nutrients", np.zeros(5, dtype=np.float32))
+                meal_calories = nutrients[0]*4 + nutrients[1]*9 + nutrients[2]*9 + nutrients[3]*4 + nutrients[4]*2
+                for i, key in enumerate(nutrient_keys):
+                    self.state[f"daily_{key}_intake"] += nutrients[i]
 
-                meal_calories = (
-                    carb_g[details[0]] * 4 +
-                    protein_g[details[1]] * 4 +
-                    fat_g[details[2]] * 9 +
-                    sat_fat_g[details[3]] * 9 + 
-                    fiber_g[details[4]] * 2
-                )
-
-                # Update daily intake
-                self.state["daily_carbohydrate_intake"] += carb_g[details[0]]
-                self.state["daily_protein_intake"] += protein_g[details[1]]
-                self.state["daily_fat_intake"] += fat_g[details[2]]
-                self.state["daily_saturated_fat_intake"] += sat_fat_g[details[3]]
-                self.state["daily_fiber_intake"] += fiber_g[details[4]]
                 self.state["daily_calories_intake"] += meal_calories
+                reward += self._calculate_reward(action_type, nutrients)
 
+            elif action_type == 1:
 
-                # Eating restores energy
-                energy_gain = meal_calories / 2000 * self.max_energy_level
+                exercise_level = action.get("exercise_level", 0)
+                met = [2.0, 6.0, 8.0][exercise_level]
+                self.state["daily_calories_burned"] += (met * self.state["current_weight_kg"] * 3.5 / 200) * 60
 
-                self.state["energy_level"] = min(self.max_energy_level,
-                                 self.state["energy_level"] + energy_gain)
-                
-                reward += self._calculate_reward(action_type)
+            elif action_type == 2:
 
-
-            elif action_type == 1:  # Exercise
-                
-                intensity = details[5]
-                exercise_mets = [4.0, 6.0, 8.0]
-                met = exercise_mets[intensity]
-                
-                weight = self.state["current_weight_kg"]
-                minutes_exercise = 60  
-                calories_burned_exercise = (met * weight * 3.5 / 200) * minutes_exercise
-                
-                self.state["daily_calories_burned"] += calories_burned_exercise
-                
-                fatigue_levels = [10, 20, 30]  
-                self.state["energy_level"] = max(self.min_energy_level, self.state["energy_level"] - fatigue_levels[intensity])
-
-                reward += self._calculate_reward(action_type)
-
-            elif action_type == 2:  # Rest
-                rest_levels = [5, 10]  # energy recovery
-                rest_choice = details[6]
-                self.state["energy_level"] = min(self.max_energy_level, self.state["energy_level"] + rest_levels[rest_choice])
-
-                reward += self._calculate_reward(action_type)
-
+                rest_choice = action.get("rest_choice", 0)
+                self.state["stress_level"] = max(self.min_stress_level, self.state["stress_level"] - [10,16][rest_choice])
 
         self.state["weight_history"].append(self.state["current_weight_kg"])
         self.state["stress_history"].append(self.state["stress_level"])
-        self.state["energy_history"].append(self.state["energy_level"])
 
         self.state["time_of_day_slot"] += 1
 
+        done = False
         if self.state["time_of_day_slot"] >= self.slots_per_day:
 
             self.state["time_of_day_slot"] = 0
             self.state["day_of_episode"] += 1
-
             net_calories = self.state["daily_calories_intake"] - self.state["daily_calories_burned"]
-            self.state["current_weight_kg"] += net_calories / 7700  
+            self.state["current_weight_kg"] += net_calories / 7700
 
-            self.state["daily_calories_intake"] = 0
-            self.state["daily_calories_burned"] = 0
-            self.state["daily_protein_intake"] = 0
-            self.state["daily_fat_intake"] = 0
-            self.state["daily_carbohydrate_intake"] = 0
-            self.state["daily_saturated_fat_intake"] = 0
-            self.state["daily_fiber_intake"] = 0
+            daily_bmi_reward = 1 - abs(self._calculate_bmi() - self.target_bmi) / max(self.target_bmi, 0.0001)
+            daily_nutrient_reward = sum(1 - abs(self.state[f"daily_{key}_intake"] - self.daily_targets_g[key]) / max(self.daily_targets_g[key], 0.0001) for key in nutrient_keys)
 
+            for key in [f"daily_{k}_intake" for k in nutrient_keys] + ["daily_calories_intake", "daily_calories_burned"]:
+                self.state[key] = 0.0
+
+            reward += daily_bmi_reward + daily_nutrient_reward
             done = self.state["day_of_episode"] >= self.days_per_episode
 
+        return self._get_obs(), reward, done, self._get_info()
 
-        obs = self._get_obs()
-        info = self._get_info()
+    def _calculate_reward(self, action_type: int, nutrients: np.ndarray = None) -> float:
 
-        return obs, reward, done, info
+        reward = 0.0
+        if action_type == 0 and nutrients is not None:
+
+            for i, key in enumerate(["protein", "fat", "saturated_fat", "carbs", "fiber"]):
+                reward += 1 - abs(nutrients[i] - self.nutrients_target_per_meal[key]) / max(self.nutrients_target_per_meal[key], 0.0001)
+
+        # Stress reward calculation
+        ideal_stress = (self.min_stress_level + self.max_stress_level) / 4
+        reward += 1 - abs(self.state["stress_level"] - ideal_stress) / max(self.max_stress_level - self.min_stress_level, 0.0001)
+        return reward
