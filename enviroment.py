@@ -5,7 +5,7 @@ import numpy as np
 class LifeStyleCoachEnv(gym.Env):
 
     def __init__(self, initial_weight_kg: float = 65, height_cm: float = 170, age: int = 22,
-                 gender: int = 0, target_bmi: float = 20, stress_range: tuple[float, float] = (1.0, 100.0),
+                 gender: int = 0, target_bmi: float = 20, stress_range: tuple[float, float] = (0.0, 100.0),
                  days_per_episode: int = 28):
         
         super().__init__()
@@ -152,7 +152,6 @@ class LifeStyleCoachEnv(gym.Env):
         event = self.daily_schedule[current_hour]
         nutrient_keys = ["protein", "fat", "saturated_fat", "carbs", "fiber"]
         truncated = False
-
         action_type = action.get("action_type", 0)
 
         # Handle sleep/work
@@ -202,20 +201,36 @@ class LifeStyleCoachEnv(gym.Env):
 
         terminated = False
         if self.state["time_of_day_slot"] >= self.slots_per_day:
-
             self.state["time_of_day_slot"] = 0
             self.state["day_of_episode"] += 1
+
             net_calories = self.state["daily_calories_intake"] - self.state["daily_calories_burned"]
             self.state["current_weight_kg"] += net_calories / 7700
 
+            # Daily BMI & nutrient rewards
             daily_bmi_reward = 1 - abs(self._calculate_bmi() - self.target_bmi) / max(self.target_bmi, 0.0001)
-            daily_nutrient_reward = sum(1 - abs(self.state[f"daily_{key}_intake"] - self.daily_targets_g[key]) / max(self.daily_targets_g[key], 0.0001) for key in nutrient_keys)
+            daily_nutrient_reward = sum(
+                1 - abs(self.state[f"daily_{key}_intake"] - self.daily_targets_g[key]) / max(self.daily_targets_g[key], 0.0001)
+                for key in nutrient_keys
+            )
+            reward += daily_bmi_reward + daily_nutrient_reward
 
+            # Reset daily intake
             for key in [f"daily_{k}_intake" for k in nutrient_keys] + ["daily_calories_intake", "daily_calories_burned"]:
                 self.state[key] = 0.0
 
-            reward += daily_bmi_reward + daily_nutrient_reward
-            terminated = self.state["day_of_episode"] >= self.days_per_episode
+            # Early termination if BMI target reached
+            current_bmi = self._calculate_bmi()
+            if abs(current_bmi - self.target_bmi) < 0.03:
+                terminated = True
+                reward += 10.0
+
+            # Episode termination based on day count
+            terminated = terminated or (self.state["day_of_episode"] >= self.days_per_episode)
+
+        # Stress reward 
+        ideal_stress = (self.min_stress_level + self.max_stress_level) / 4      # WIthin 25% quartile
+        reward += 1 - abs(self.state["stress_level"] - ideal_stress) / max(self.max_stress_level - self.min_stress_level, 0.0001)
 
         return self._get_obs(), reward, terminated, truncated, self._get_info()
 
@@ -227,7 +242,4 @@ class LifeStyleCoachEnv(gym.Env):
             for i, key in enumerate(["protein", "fat", "saturated_fat", "carbs", "fiber"]):
                 reward += 1 - abs(nutrients[i] - self.nutrients_target_per_meal[key]) / max(self.nutrients_target_per_meal[key], 0.0001)
 
-        # Stress reward calculation
-        ideal_stress = (self.min_stress_level + self.max_stress_level) / 4
-        reward += 1 - abs(self.state["stress_level"] - ideal_stress) / max(self.max_stress_level - self.min_stress_level, 0.0001)
         return reward
