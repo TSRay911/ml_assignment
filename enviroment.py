@@ -162,14 +162,14 @@ class LifeStyleCoachEnv(gym.Env):
 
         elif event == "work":
 
-            self.state["stress_level"] = min(self.max_stress_level, self.state["stress_level"] + 4)
+            self.state["stress_level"] = min(self.max_stress_level, self.state["stress_level"] + 5)
             self.state["daily_calories_burned"] += (2.0 * self.state["current_weight_kg"] * 3.5 / 200) * 60
 
         else:
 
             # Penalize repeated action
             if self.state.get("last_action_type") == action_type:
-                reward -= 0.5
+                reward -= 1.5
 
             self.state["last_action_type"] = action_type
 
@@ -209,10 +209,15 @@ class LifeStyleCoachEnv(gym.Env):
 
             # Daily BMI & nutrient rewards
             daily_bmi_reward = 1 - abs(self._calculate_bmi() - self.target_bmi) / max(self.target_bmi, 0.0001)
+            
             daily_nutrient_reward = sum(
                 1 - abs(self.state[f"daily_{key}_intake"] - self.daily_targets_g[key]) / max(self.daily_targets_g[key], 0.0001)
                 for key in nutrient_keys
             )
+            
+            daily_nutrient_reward *=1.25
+            daily_bmi_reward *= 2
+
             reward += daily_bmi_reward + daily_nutrient_reward
 
             # Reset daily intake
@@ -223,14 +228,19 @@ class LifeStyleCoachEnv(gym.Env):
             current_bmi = self._calculate_bmi()
             if abs(current_bmi - self.target_bmi) < 0.03:
                 terminated = True
-                reward += 10.0
+                reward += 100.0          
 
             # Episode termination based on day count
             terminated = terminated or (self.state["day_of_episode"] >= self.days_per_episode)
 
         # Stress reward 
-        ideal_stress = (self.min_stress_level + self.max_stress_level) / 4      # WIthin 25% quartile
-        reward += 1 - abs(self.state["stress_level"] - ideal_stress) / max(self.max_stress_level - self.min_stress_level, 0.0001)
+        stress_threshold = 20  
+        if self.state["stress_level"] <= stress_threshold / 2:
+            reward += 1.0  
+        elif self.state["stress_level"] <= stress_threshold:
+            reward += 0.5
+        else:
+            reward += 1 - (self.state["stress_level"] - stress_threshold) / (self.max_stress_level - stress_threshold)
 
         return self._get_obs(), reward, terminated, truncated, self._get_info()
 
@@ -241,5 +251,6 @@ class LifeStyleCoachEnv(gym.Env):
 
             for i, key in enumerate(["protein", "fat", "saturated_fat", "carbs", "fiber"]):
                 reward += 1 - abs(nutrients[i] - self.nutrients_target_per_meal[key]) / max(self.nutrients_target_per_meal[key], 0.0001)
+            reward *= 1.25
 
         return reward
