@@ -270,6 +270,10 @@ class LifeStyleCoachEnv(gym.Env):
         self.state["time_since_last_meal"] += 1
         self.state["time_since_last_exercise"] += 1
 
+        self.state["bmi_history"].append(self.state["current_bmi"])
+        self.state["stress_level_history"].append(self.state["current_stress_level"])
+
+
         if self.state["current_timeslot"] >= self.slots_per_day:
             self.state["current_timeslot"] = 0
 
