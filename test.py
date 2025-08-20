@@ -1,5 +1,5 @@
 import gymnasium as gym
-from enviroment import LifeStyleCoachEnv
+from environment import LifeStyleCoachEnv
 from gymnasium.wrappers import FlattenObservation
 
 
@@ -13,10 +13,12 @@ print("Action space:", env.action_space)
 print("Observation space:", env.observation_space)
 
 
-for i in range(500):
+for i in range(5):
     action = env.action_space.sample()
     obs, reward, terminated, truncated, info = env.step(action)
     print(reward, terminated, truncated)
     if terminated or truncated:
         obs, info = env.reset()
 
+print("Action space:", env.action_space)
+print("Observation space:", env.observation_space)
