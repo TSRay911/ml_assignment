@@ -50,9 +50,6 @@ class LifeStyleCoachEnv(gym.Env):
             "fiber": 30             # Grams 
         }
 
-        self.initial_bmi = self.calculate_bmi()
-
-        self.daily_calories_needed = self.calculate_daily_calories_needed()
         self.update_daily_nutrient_targets()
 
         self.days_per_episode = days_per_episode
@@ -96,15 +93,27 @@ class LifeStyleCoachEnv(gym.Env):
         )
 
 
-        nutrient_high = np.array([120.0, 60.0, 8.0, 50.0, 20.0], dtype=np.float32) # Range of the nutrients per meal in the order of protein, fat, sat fat, carbs, fiber
-        self.action_space = gym.spaces.Dict(
-            {
-                "main_action": gym.spaces.Discrete(3),
-                "nutrient_parameters": gym.spaces.Box(low=0.0, high=nutrient_high, shape=(5,), dtype=np.float32),
-                "mets_parameters": gym.spaces.Box(low=2.0, high=11.5, shape=(1,), dtype=np.float32),
-                "rest_action": gym.spaces.Discrete(2)
-            }
-        )
+         
+        main_action_low, main_action_high = 0, 3  # For Discrete(3)
+        nutrient_low, nutrient_high = np.zeros(5), np.array([120.0, 60.0, 8.0, 50.0, 20.0]) # Range of the nutrients per meal in the order of protein, fat, sat fat, carbs, fiber
+        mets_low, mets_high = np.array([2.0]), np.array([11.5])
+        rest_action_low, rest_action_high = 0, 2 # For Discrete(2)
+
+        flat_low = np.concatenate([
+            np.array([main_action_low]),
+            nutrient_low,
+            mets_low,
+            np.array([rest_action_low])
+        ])
+
+        flat_high = np.concatenate([
+            np.array([main_action_high]),
+            nutrient_high,
+            mets_high,
+            np.array([rest_action_high])
+        ])
+
+        self.action_space = gym.spaces.Box(low=flat_low, high=flat_high, dtype=np.float32)
 
     def calculate_bmi(self):
         return self.state["current_weight_kg"] / (self.initial_height_cm / 100 ) ** 2
@@ -114,10 +123,10 @@ class LifeStyleCoachEnv(gym.Env):
     
     def update_daily_nutrient_targets(self):
         self.daily_nutrients_target_g = {
-            "protein": (self.daily_nutrients_target["protein"] * self.daily_calories_needed) / 4, 
-            "fat": (self.daily_nutrients_target["fat"] * self.daily_calories_needed) / 9, 
-            "saturated_fat": (self.daily_nutrients_target["saturated_fat"] * self.daily_calories_needed) / 9, 
-            "carbs": (self.daily_nutrients_target["carbs"] * self.daily_calories_needed) / 4, 
+            "protein": (self.daily_nutrients_target["protein"] * self.state["daily_calories_needed"]) / 4, 
+            "fat": (self.daily_nutrients_target["fat"] * self.state["daily_calories_needed"]) / 9, 
+            "saturated_fat": (self.daily_nutrients_target["saturated_fat"] * self.state["daily_calories_needed"]) / 9, 
+            "carbs": (self.daily_nutrients_target["carbs"] * self.state["daily_calories_needed"]) / 4, 
             "fiber": self.daily_nutrients_target["fiber"] 
         }
 
@@ -214,6 +223,20 @@ class LifeStyleCoachEnv(gym.Env):
 
     def step(self, action):
 
+        main_choice_continuous = action[0]
+        rest_action_continuous = action[7]
+
+        main_choice = int(np.round(main_choice_continuous))
+        main_choice = np.clip(main_choice, 0, 2) # Valid actions are 0, 1, 2
+
+        rest_level = int(np.round(rest_action_continuous))
+        rest_level = np.clip(rest_level, 0, 1) # Valid actions are 0, 1
+
+        # 2. Extract the continuous actions (clamping is good practice here too)
+        nutrients = np.clip(action[1:6], self.action_space.low[1:6], self.action_space.high[1:6])
+        mets_level = np.clip(action[6:7], self.action_space.low[6:7], self.action_space.high[6:7])
+
+
         terminated = False
         truncated = False
         reward = 0
@@ -232,11 +255,8 @@ class LifeStyleCoachEnv(gym.Env):
             self.state["current_calories_burned"] += (0.9 * self.state["current_weight_kg"] * 3.5 / 200) * 60
 
         elif event == "action":
-
-            main_choice = action['main_action']
             
             if main_choice == 0:
-                nutrients = action["nutrient_parameters"]
                 meal_calories = nutrients[0]*4 + nutrients[1]*9 + nutrients[2]*9 + nutrients[3]*4 + nutrients[4]*2
 
                 self.state["current_calories_intake"] += meal_calories
@@ -249,12 +269,10 @@ class LifeStyleCoachEnv(gym.Env):
                 self.state["time_since_last_meal"] = 0
 
             elif main_choice == 1:
-                mets_level = action["mets_parameters"]
                 self.state["current_calories_burned"] += (mets_level[0] * self.state["current_weight_kg"] * 3.5 / 200) * 60
                 self.state["time_since_last_exercise"] = 0
 
             else:
-                rest_level = action["rest_action"]
 
                 if rest_level == 0: 
                     rest_mets = 1.3 
