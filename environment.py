@@ -94,14 +94,14 @@ class LifeStyleCoachEnv(gym.Env):
 
 
          
-        main_action = gym.Discrete(3)
-        nutrients = gym.Box(low=np.zeros(5), high=np.array([120.0, 60.0, 8.0, 50.0, 20.0]), dtype=np.float32)
-        mets = gym.Box(low=np.array([2.0]), high=np.array([11.5]), dtype=np.float32)
-        rest_action = gym.Discrete(2)
+        main_action = gym.spaces.Discrete(3)
+        nutrients = gym.spaces.Box(low=np.zeros(5), high=np.array([120.0, 60.0, 8.0, 50.0, 20.0]), dtype=np.float32)
+        mets = gym.spaces.Box(low=np.array([2.0]), high=np.array([11.5]), dtype=np.float32)
+        rest_action = gym.spaces.Discrete(2)
 
-        self.structured_action_space = gym.Tuple((main_action, nutrients, mets, rest_action))
+        self.structured_action_space = gym.spaces.Tuple((main_action, nutrients, mets, rest_action))
 
-        self.action_space = gym.flatten_space(self.structured_action_space)
+        self.action_space = gym.spaces.flatten_space(self.structured_action_space)
 
     def calculate_bmi(self):
         return self.state["current_weight_kg"] / (self.initial_height_cm / 100 ) ** 2
@@ -211,12 +211,13 @@ class LifeStyleCoachEnv(gym.Env):
 
     def step(self, action):
 
-        decoded = gym.unflatten(self.structured_action_space, action)
+        decoded = gym.spaces.unflatten(self.structured_action_space, action)
     
         main_choice = int(np.round(decoded[0]))        
         nutrients = np.clip(decoded[1], 0, [120,60,8,50,20])
-        mets_level = np.clip(decoded[2], 2.0, 11.5)
-        rest_level = int(np.round(decoded[3]))        
+        mets_level = np.clip(decoded[2], 2.0, 11.5)   
+        rest_level = int(np.clip(np.round(decoded[3]), 0, 1))
+
 
         terminated = False
         truncated = False
