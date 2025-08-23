@@ -94,26 +94,14 @@ class LifeStyleCoachEnv(gym.Env):
 
 
          
-        main_action_low, main_action_high = 0, 3  # For Discrete(3)
-        nutrient_low, nutrient_high = np.zeros(5), np.array([120.0, 60.0, 8.0, 50.0, 20.0]) # Range of the nutrients per meal in the order of protein, fat, sat fat, carbs, fiber
-        mets_low, mets_high = np.array([2.0]), np.array([11.5])
-        rest_action_low, rest_action_high = 0, 2 # For Discrete(2)
+        main_action = gym.Discrete(3)
+        nutrients = gym.Box(low=np.zeros(5), high=np.array([120.0, 60.0, 8.0, 50.0, 20.0]), dtype=np.float32)
+        mets = gym.Box(low=np.array([2.0]), high=np.array([11.5]), dtype=np.float32)
+        rest_action = gym.Discrete(2)
 
-        flat_low = np.concatenate([
-            np.array([main_action_low]),
-            nutrient_low,
-            mets_low,
-            np.array([rest_action_low])
-        ])
+        self.structured_action_space = gym.Tuple((main_action, nutrients, mets, rest_action))
 
-        flat_high = np.concatenate([
-            np.array([main_action_high]),
-            nutrient_high,
-            mets_high,
-            np.array([rest_action_high])
-        ])
-
-        self.action_space = gym.spaces.Box(low=flat_low, high=flat_high, dtype=np.float32)
+        self.action_space = gym.flatten_space(self.structured_action_space)
 
     def calculate_bmi(self):
         return self.state["current_weight_kg"] / (self.initial_height_cm / 100 ) ** 2
@@ -223,19 +211,12 @@ class LifeStyleCoachEnv(gym.Env):
 
     def step(self, action):
 
-        main_choice_continuous = action[0]
-        rest_action_continuous = action[7]
-
-        main_choice = int(np.round(main_choice_continuous))
-        main_choice = np.clip(main_choice, 0, 2) # Valid actions are 0, 1, 2
-
-        rest_level = int(np.round(rest_action_continuous))
-        rest_level = np.clip(rest_level, 0, 1) # Valid actions are 0, 1
-
-        # 2. Extract the continuous actions (clamping is good practice here too)
-        nutrients = np.clip(action[1:6], self.action_space.low[1:6], self.action_space.high[1:6])
-        mets_level = np.clip(action[6:7], self.action_space.low[6:7], self.action_space.high[6:7])
-
+        decoded = gym.unflatten(self.structured_action_space, action)
+    
+        main_choice = int(np.round(decoded[0]))        
+        nutrients = np.clip(decoded[1], 0, [120,60,8,50,20])
+        mets_level = np.clip(decoded[2], 2.0, 11.5)
+        rest_level = int(np.round(decoded[3]))        
 
         terminated = False
         truncated = False
