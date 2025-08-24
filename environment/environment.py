@@ -8,10 +8,8 @@ class LifeStyleCoachEnv(gym.Env):
     def __init__(self, initial_weight_kg: float = 65, height_cm: float = 170, age: int = 22,
                  gender: int = 0, target_bmi: float = 20, stress_range: tuple[float, float] = (0.0, 100.0),
                  days_per_episode: int = 28, work_mets: float = 2.0):
-        
 
         super().__init__()
-
 
         # Static Variables
         self.initial_weight_kg = initial_weight_kg
@@ -62,7 +60,6 @@ class LifeStyleCoachEnv(gym.Env):
             for i in range(start, end):
                 self.daily_schedule[i] = 'work'
 
-
         for i in range(6):
             self.daily_schedule[i] = 'sleep'
         for i in range(22, 24):
@@ -88,8 +85,6 @@ class LifeStyleCoachEnv(gym.Env):
                 "daily_calories_needed": gym.spaces.Box(low=0, high=4000, shape=(1,), dtype=np.float32),
             }
         )
-
-
          
         self.action_space = gym.spaces.Box(
             low=-1.0,
@@ -97,7 +92,6 @@ class LifeStyleCoachEnv(gym.Env):
             shape=(8,),
             dtype=np.float32
         )
-
 
     def rescale_action(self, action):
         lows  = np.array([0.0,   0,  0,  0,  0,  0,  2.0, 0.0], dtype=np.float32)
@@ -121,19 +115,16 @@ class LifeStyleCoachEnv(gym.Env):
             "fiber": self.daily_nutrients_target["fiber"] 
         }
 
-    def calculate_end_of_day_reward(self, prev_bmi):
-        nutrients_reward_sum = 0
-        reward = 0
+    def calculate_BMI_reward(self, prev_bmi):
         bmi_weight = 4
-        nutrients_weight = 3
-        calories_weight = 2
-
-        # BMI Calculation first
         prev_distance_bmi = abs(prev_bmi - self.target_bmi)
         current_distance_bmi = abs(self.state["current_bmi"] - self.target_bmi)
-        reward += (prev_distance_bmi - current_distance_bmi) * bmi_weight
+        return (prev_distance_bmi - current_distance_bmi) * bmi_weight
 
-        # Nutrient Calculation second 
+    def calculate_meal_nutrients_reward(self):
+        nutrients_reward_sum = 0
+        nutrients_weight = 3
+
         nutrients = ["protein", "fat", "saturated_fat", "carbs", "fiber"]
         for nutrient in nutrients:
             consumed = self.state[f"current_{nutrient}_intake"]
@@ -146,10 +137,11 @@ class LifeStyleCoachEnv(gym.Env):
 
             nutrients_reward_sum += max(0, 1 - normalized_error)
 
-        nutrient_reward = (nutrients_reward_sum / len(nutrients))
-        reward += nutrient_reward * nutrients_weight
+        nutrient_reward = (nutrients_reward_sum / len(nutrients)) * nutrients_weight
+        return nutrient_reward
 
-        # Calories calculation third
+    def calculate_meal_calories_reward(self):
+        calories_weight = 2
         current_bmi = self.state["current_bmi"]
 
         if current_bmi < self.target_bmi - 0.5: 
@@ -162,15 +154,20 @@ class LifeStyleCoachEnv(gym.Env):
         target_intake = self.state["daily_calories_needed"] + calorie_modifier
         actual_intake = self.state["current_calories_intake"]
 
-        reward += np.exp(-0.5 * ((actual_intake - target_intake) / 200)**2) * calories_weight
-
+        reward = np.exp(-0.5 * ((actual_intake - target_intake) / 200)**2) * calories_weight
         return reward
 
-    def calculate_hourly_reward(self):
+    def calculate_stress_reward(self):
    
         reward = 1 / (1 + np.exp(0.1 * (self.state["current_stress_level"] - 40)))
             
         return (reward * 5)
+
+    def calculate_exercise_reward(self, calories_burned):
+        exercise_weight = 1.5  
+        normalized_reward = min(calories_burned / 500, 1.0)
+        reward = exercise_weight * normalized_reward
+        return reward
 
     def _get_obs(self):
         return {
@@ -213,14 +210,12 @@ class LifeStyleCoachEnv(gym.Env):
         return observation, info
 
     def step(self, action):
-
         action = self.rescale_action(action)
 
-        main_choice = int(np.round(action[0]))
+        main_choice = np.clip(int(np.round(action[0])), 0, 2)
         nutrients = action[1:6]
         mets_level = action[6]
-        rest_level = int(np.round(action[7]))
-
+        rest_level = int(np.clip(np.round(action[7]), 0, 1))
 
         terminated = False
         truncated = False
@@ -228,19 +223,16 @@ class LifeStyleCoachEnv(gym.Env):
 
         current_hour = self.state["current_timeslot"]
         event = self.daily_schedule[current_hour]
-        
+
         if event == "work":
-        
             self.state["current_stress_level"] = min(self.max_stress_level, self.state["current_stress_level"] + 5)
             self.state["current_calories_burned"] += (self.work_mets * self.state["current_weight_kg"] * 3.5 / 200) * 60
 
         elif event == "sleep":
-
             self.state["current_stress_level"] = max(self.min_stress_level, self.state["current_stress_level"] - 2)
             self.state["current_calories_burned"] += (0.9 * self.state["current_weight_kg"] * 3.5 / 200) * 60
 
         elif event == "action":
-            
             if main_choice == 0:
                 meal_calories = nutrients[0]*4 + nutrients[1]*9 + nutrients[2]*9 + nutrients[3]*4 + nutrients[4]*2
 
@@ -253,21 +245,21 @@ class LifeStyleCoachEnv(gym.Env):
 
                 self.state["time_since_last_meal"] = 0
 
+                reward += self.calculate_meal_nutrients_reward()
+                reward += self.calculate_meal_calories_reward()
+
             elif main_choice == 1:
-                self.state["current_calories_burned"] += (mets_level * self.state["current_weight_kg"] * 3.5 / 200) * 60
+                calories_burned = (mets_level * self.state["current_weight_kg"] * 3.5 / 200) * 60
+                self.state["current_calories_burned"] += calories_burned
                 self.state["time_since_last_exercise"] = 0
+                reward += self.calculate_exercise_reward(calories_burned)
 
             else:
-
-                if rest_level == 0: 
-                    rest_mets = 1.3 
-                else: 
-                    rest_mets = 1.8
-
+                rest_mets = 1.3 if rest_level == 0 else 1.8
                 self.state["current_calories_burned"] += (rest_mets * self.state["current_weight_kg"] * 3.5 / 200) * 60
                 self.state["current_stress_level"] = max(self.min_stress_level, self.state["current_stress_level"] - [10,16][rest_level])
-        
-        reward += self.calculate_hourly_reward()
+
+        reward += self.calculate_stress_reward()
 
         self.state["current_timeslot"] += 1
 
@@ -277,18 +269,16 @@ class LifeStyleCoachEnv(gym.Env):
         self.state["bmi_history"].append(self.state["current_bmi"])
         self.state["stress_level_history"].append(self.state["current_stress_level"])
 
-        if self.state["time_since_last_meal"] > 6:   
-            reward -= 1 * (self.state["time_since_last_meal"] - 6)  
+        if self.state["time_since_last_meal"] > 6:
+            reward -= 1 * (self.state["time_since_last_meal"] - 6)
 
-        if self.state["time_since_last_exercise"] > 48:  
-            reward -= 2 * ((self.state["time_since_last_exercise"] - 48) // 24)  
-
+        if self.state["time_since_last_exercise"] > 48:
+            reward -= 2 * ((self.state["time_since_last_exercise"] - 48) // 24)
 
         if self.state["current_timeslot"] >= self.slots_per_day:
             self.state["current_timeslot"] = 0
 
             calorie_balance = self.state["current_calories_intake"] - self.state["current_calories_burned"]
-
             prev_bmi_for_reward = self.state["current_bmi"]
 
             self.state["current_weight_kg"] += calorie_balance / 7700
@@ -299,25 +289,29 @@ class LifeStyleCoachEnv(gym.Env):
 
             self.state["day_of_episode"] += 1
 
-            if abs(self.state["current_bmi"] - self.target_bmi) < 0.1:
+            reward += self.calculate_BMI_reward(prev_bmi_for_reward)
+
+            reward -= 0.1  
+
+            if abs(self.state["current_bmi"] - self.target_bmi) < 0.2:
                 terminated = True
-                reward += 100
-            else:
-                reward -= 0.1
+                reward += 100  
 
-            reward += self.calculate_end_of_day_reward(prev_bmi_for_reward) # Calcualte reward at the end of the day based on current state
-
-            self.state["current_calories_burned"] = 0.0
-            self.state["current_calories_intake"] = 0.0
-            self.state["current_protein_intake"] = 0.0
-            self.state["current_fat_intake"] = 0.0
-            self.state["current_saturated_fat_intake"] = 0.0
-            self.state["current_carbs_intake"] = 0.0
-            self.state["current_fiber_intake"] = 0.0
+            reset_keys = [
+                "current_calories_burned",
+                "current_calories_intake",
+                "current_protein_intake",
+                "current_fat_intake",
+                "current_saturated_fat_intake",
+                "current_carbs_intake",
+                "current_fiber_intake"
+            ]
             
+            for key in reset_keys:
+                self.state[key] = 0.0
 
         if self.state["current_bmi"] > 40 or self.state["current_bmi"] < 16:
-            terminated = True
+            terminated = True       
             reward -= 100
 
         truncated = self.state["day_of_episode"] >= self.days_per_episode

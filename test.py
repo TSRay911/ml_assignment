@@ -1,13 +1,9 @@
-import gymnasium as gym
-from environment import LifeStyleCoachEnv
+from environment.environment2 import LifeStyleCoachEnv
 from gymnasium.wrappers import FlattenObservation
-
-
 
 env = LifeStyleCoachEnv()
 env = FlattenObservation(env)
 obs, info = env.reset(seed=42)
-
 
 print("Action space:", env.action_space)
 print("Observation space:", env.observation_space)
