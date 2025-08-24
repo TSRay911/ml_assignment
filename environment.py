@@ -51,9 +51,6 @@ class LifeStyleCoachEnv(gym.Env):
         }
 
         self.update_daily_nutrient_targets()
-
-        self.days_per_episode = days_per_episode
-
         self.initial_state = copy.deepcopy(self.state)  # Make a copy of initial state to load in reset function
         
         self.slots_per_day = 24     # Each slot represents 1 hour in a day, so in total 24 hours a day
@@ -75,33 +72,39 @@ class LifeStyleCoachEnv(gym.Env):
         self.observation_space = gym.spaces.Dict(
             {
                 "current_timeslot": gym.spaces.Discrete(24),
-                "current_bmi": gym.spaces.Box(low=10.0, high=80.0, shape=(), dtype=np.float32),
-                "current_calories_burned": gym.spaces.Box(low=0.0, high=6000.0, shape=(), dtype=np.float32),
-                "current_calories_intake": gym.spaces.Box(low=0.0, high=6000.0, shape=(), dtype=np.float32),
-                "current_protein_intake": gym.spaces.Box(low=0.0, high=300.0, shape=(), dtype=np.float32),
-                "current_fat_intake": gym.spaces.Box(low=0.0, high=150.0, shape=(), dtype=np.float32),
-                "current_saturated_fat_intake": gym.spaces.Box(low=0.0, high=50.0, shape=(), dtype=np.float32),
-                "current_carbs_intake": gym.spaces.Box(low=0.0, high=700.0, shape=(), dtype=np.float32),
-                "current_fiber_intake": gym.spaces.Box(low=0.0, high=60.0, shape=(), dtype=np.float32),
-                "current_weight_kg": gym.spaces.Box(low=40.0, high=300.0, shape=(), dtype=np.float32),
-                "current_stress_level": gym.spaces.Box(low=self.min_stress_level, high=self.max_stress_level, shape=(), dtype=np.float32),
-                "day_of_episode": gym.spaces.Box(low=0, high=self.days_per_episode, shape=(), dtype=np.int32),
-                "time_since_last_meal": gym.spaces.Box(low=0, high=24, shape=(), dtype=np.int32),
-                "time_since_last_exercise": gym.spaces.Box(low=0, high=24, shape=(), dtype=np.int32),
-                "daily_calories_needed": gym.spaces.Box(low=0, high=4000, shape=(), dtype=np.float32),
+                "current_bmi": gym.spaces.Box(low=10.0, high=80.0, shape=(1,), dtype=np.float32),
+                "current_calories_burned": gym.spaces.Box(low=0.0, high=6000.0, shape=(1,), dtype=np.float32),
+                "current_calories_intake": gym.spaces.Box(low=0.0, high=6000.0, shape=(1,), dtype=np.float32),
+                "current_protein_intake": gym.spaces.Box(low=0.0, high=300.0, shape=(1,), dtype=np.float32),
+                "current_fat_intake": gym.spaces.Box(low=0.0, high=150.0, shape=(1,), dtype=np.float32),
+                "current_saturated_fat_intake": gym.spaces.Box(low=0.0, high=50.0, shape=(1,), dtype=np.float32),
+                "current_carbs_intake": gym.spaces.Box(low=0.0, high=700.0, shape=(1,), dtype=np.float32),
+                "current_fiber_intake": gym.spaces.Box(low=0.0, high=60.0, shape=(1,), dtype=np.float32),
+                "current_weight_kg": gym.spaces.Box(low=40.0, high=300.0, shape=(1,), dtype=np.float32),
+                "current_stress_level": gym.spaces.Box(low=self.min_stress_level, high=self.max_stress_level, shape=(1,), dtype=np.float32),
+                "day_of_episode": gym.spaces.Box(low=0, high=self.days_per_episode, shape=(1,), dtype=np.int32),
+                "time_since_last_meal": gym.spaces.Box(low=0, high=24, shape=(1,), dtype=np.int32),
+                "time_since_last_exercise": gym.spaces.Box(low=0, high=24, shape=(1,), dtype=np.int32),
+                "daily_calories_needed": gym.spaces.Box(low=0, high=4000, shape=(1,), dtype=np.float32),
             }
         )
 
 
          
-        main_action = gym.spaces.Discrete(3)
-        nutrients = gym.spaces.Box(low=np.zeros(5), high=np.array([120.0, 60.0, 8.0, 50.0, 20.0]), dtype=np.float32)
-        mets = gym.spaces.Box(low=np.array([2.0]), high=np.array([11.5]), dtype=np.float32)
-        rest_action = gym.spaces.Discrete(2)
+        self.action_space = gym.spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(8,),
+            dtype=np.float32
+        )
 
-        self.structured_action_space = gym.spaces.Tuple((main_action, nutrients, mets, rest_action))
 
-        self.action_space = gym.spaces.flatten_space(self.structured_action_space)
+    def rescale_action(self, action):
+        lows  = np.array([0.0,   0,  0,  0,  0,  0,  2.0, 0.0], dtype=np.float32)
+        highs = np.array([2.0, 120, 60,  8, 50, 20, 11.5, 1.0], dtype=np.float32)
+
+        scaled = lows + (0.5 * (action + 1.0) * (highs - lows))
+        return scaled
 
     def calculate_bmi(self):
         return self.state["current_weight_kg"] / (self.initial_height_cm / 100 ) ** 2
@@ -121,7 +124,7 @@ class LifeStyleCoachEnv(gym.Env):
     def calculate_end_of_day_reward(self, prev_bmi):
         nutrients_reward_sum = 0
         reward = 0
-        bmi_weight = 10
+        bmi_weight = 4
         nutrients_weight = 3
         calories_weight = 2
 
@@ -167,25 +170,25 @@ class LifeStyleCoachEnv(gym.Env):
    
         reward = 1 / (1 + np.exp(0.1 * (self.state["current_stress_level"] - 40)))
             
-        return reward
+        return (reward * 5)
 
     def _get_obs(self):
         return {
             "current_timeslot": self.state["current_timeslot"],
-            "current_bmi": np.float32(self.state["current_bmi"]),
-            "current_calories_burned": np.float32(self.state["current_calories_burned"]),
-            "current_calories_intake": np.float32(self.state["current_calories_intake"]),
-            "current_protein_intake": np.float32(self.state["current_protein_intake"]),
-            "current_fat_intake": np.float32(self.state["current_fat_intake"]),
-            "current_saturated_fat_intake": np.float32(self.state["current_saturated_fat_intake"]),
-            "current_carbs_intake": np.float32(self.state["current_carbs_intake"]),
-            "current_fiber_intake": np.float32(self.state["current_fiber_intake"]),
-            "current_weight_kg": np.float32(self.state["current_weight_kg"]),
-            "current_stress_level": np.float32(self.state["current_stress_level"]),
-            "day_of_episode": np.int32(self.state["day_of_episode"]),
-            "time_since_last_meal": np.int32(self.state["time_since_last_meal"]),
-            "time_since_last_exercise": np.int32(self.state["time_since_last_exercise"]),
-            "daily_calories_needed": np.float32(self.state["daily_calories_needed"]),
+            "current_bmi": np.array([self.state["current_bmi"]], dtype=np.float32),
+            "current_calories_burned": np.array([self.state["current_calories_burned"]], dtype=np.float32),
+            "current_calories_intake": np.array([self.state["current_calories_intake"]], dtype=np.float32),
+            "current_protein_intake": np.array([self.state["current_protein_intake"]], dtype=np.float32),
+            "current_fat_intake": np.array([self.state["current_fat_intake"]], dtype=np.float32),
+            "current_saturated_fat_intake": np.array([self.state["current_saturated_fat_intake"]], dtype=np.float32),
+            "current_carbs_intake": np.array([self.state["current_carbs_intake"]], dtype=np.float32),
+            "current_fiber_intake": np.array([self.state["current_fiber_intake"]], dtype=np.float32),
+            "current_weight_kg": np.array([self.state["current_weight_kg"]], dtype=np.float32),
+            "current_stress_level": np.array([self.state["current_stress_level"]], dtype=np.float32),
+            "day_of_episode": np.array([self.state["day_of_episode"]], dtype=np.int32),
+            "time_since_last_meal": np.array([self.state["time_since_last_meal"]], dtype=np.int32),
+            "time_since_last_exercise": np.array([self.state["time_since_last_exercise"]], dtype=np.int32),
+            "daily_calories_needed": np.array([self.state["daily_calories_needed"]], dtype=np.float32),
         }
         
     def _get_info(self):
@@ -211,12 +214,12 @@ class LifeStyleCoachEnv(gym.Env):
 
     def step(self, action):
 
-        decoded = gym.spaces.unflatten(self.structured_action_space, action)
-    
-        main_choice = int(np.round(decoded[0]))        
-        nutrients = np.clip(decoded[1], 0, [120,60,8,50,20])
-        mets_level = np.clip(decoded[2], 2.0, 11.5)   
-        rest_level = int(np.clip(np.round(decoded[3]), 0, 1))
+        action = self.rescale_action(action)
+
+        main_choice = int(np.round(action[0]))
+        nutrients = action[1:6]
+        mets_level = action[6]
+        rest_level = int(np.round(action[7]))
 
 
         terminated = False
@@ -251,7 +254,7 @@ class LifeStyleCoachEnv(gym.Env):
                 self.state["time_since_last_meal"] = 0
 
             elif main_choice == 1:
-                self.state["current_calories_burned"] += (mets_level[0] * self.state["current_weight_kg"] * 3.5 / 200) * 60
+                self.state["current_calories_burned"] += (mets_level * self.state["current_weight_kg"] * 3.5 / 200) * 60
                 self.state["time_since_last_exercise"] = 0
 
             else:
@@ -267,11 +270,18 @@ class LifeStyleCoachEnv(gym.Env):
         reward += self.calculate_hourly_reward()
 
         self.state["current_timeslot"] += 1
-        self.state["time_since_last_meal"] += 1
-        self.state["time_since_last_exercise"] += 1
+
+        self.state["time_since_last_meal"] = min(self.state["time_since_last_meal"] + 1, 24)
+        self.state["time_since_last_exercise"] = min(self.state["time_since_last_exercise"] + 1, 24)
 
         self.state["bmi_history"].append(self.state["current_bmi"])
         self.state["stress_level_history"].append(self.state["current_stress_level"])
+
+        if self.state["time_since_last_meal"] > 6:   
+            reward -= 1 * (self.state["time_since_last_meal"] - 6)  
+
+        if self.state["time_since_last_exercise"] > 48:  
+            reward -= 2 * ((self.state["time_since_last_exercise"] - 48) // 24)  
 
 
         if self.state["current_timeslot"] >= self.slots_per_day:
