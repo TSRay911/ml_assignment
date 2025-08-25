@@ -145,7 +145,17 @@ class LifeStyleCoachEnv(gym.Env):
 
         return observation, info
 
-    
+    def get_action_mask(self):
+        current_hour = self.state["current_timeslot"]
+        fixed_event = self.daily_schedule[current_hour]
+
+        mask = np.ones(self.action_space.n, dtype=np.int32) 
+        
+        if fixed_event in ["work", "sleep"]:
+            mask[:] = 0  
+        return mask
+
+
     def step(self, action):
 
         terminated = False
@@ -218,7 +228,7 @@ class LifeStyleCoachEnv(gym.Env):
 
             if abs(self.state["current_bmi"] - self.target_bmi) < 0.2:
                 terminated = True
-                reward += 10 
+                reward += 5
 
             reset_keys = [
                 "current_calories_burned",
@@ -235,7 +245,7 @@ class LifeStyleCoachEnv(gym.Env):
 
         if self.state["current_bmi"] > 40 or self.state["current_bmi"] < 16:
             terminated = True       
-            reward -= 10
+            reward -= 5
 
         observation = self._get_obs()
         info = self._get_info()
@@ -293,10 +303,10 @@ class LifeStyleCoachEnv(gym.Env):
 
     
     def calculate_BMI_reward(self, prev_bmi):
-            bmi_weight = 1.0
-            prev_distance_bmi = abs(prev_bmi - self.target_bmi)
-            current_distance_bmi = abs(self.state["current_bmi"] - self.target_bmi)
-            return (prev_distance_bmi - current_distance_bmi) * bmi_weight
+        prev_distance = abs(prev_bmi - self.target_bmi)
+        current_distance = abs(self.state["current_bmi"] - self.target_bmi)
+        improvement = prev_distance - current_distance
+        return np.clip(improvement * 10, -1.0, 1.0)  # scale to [-1,1]
     
     def calculate_last_meal_exercise(self, action):
         self.state["time_since_last_meal"] = min(self.state["time_since_last_meal"] + 1, 24) if action not in [0,1,2] else 0
@@ -306,7 +316,7 @@ class LifeStyleCoachEnv(gym.Env):
         exercise_penalty = self.state["time_since_last_exercise"] / 48  
 
         penalty = -0.5 * meal_penalty - 0.5 * exercise_penalty
-        penalty = np.clip(penalty, -1.0, 0.0)  
+        penalty = np.clip(penalty, -0.5, 0.0)  
 
         return penalty
 
