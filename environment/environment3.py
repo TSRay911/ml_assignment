@@ -337,7 +337,7 @@ class LifeStyleEnv(gym.Env):
         reward += (nutrients_reward_sum / 5)
 
 
-        calories_reward = (self.state["daily_calories_burned"] - self.state["daily_calories_intake"]) * 0.0035
+        calories_reward = (self.state["daily_calories_burned"] - self.state["daily_calories_intake"]) * 0.005
         reward += calories_reward
 
         return reward
