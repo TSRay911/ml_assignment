@@ -5,10 +5,10 @@ import copy
 
 class LifeStyleEnv(gym.Env):
 
-    def __init__(self, initial_weight_kg: float = 95, height_cm: float = 170, gender: int = 0,
-                 target_bmi: float = 20, stress_range: tuple[float, float] = (0.0, 100.0),
+    def __init__(self, initial_weight_kg: float = 70, height_cm: float = 170, gender: int = 0,
+                 target_bmi: float = 21.75, stress_range: tuple[float, float] = (0.0, 100.0),
                  hunger_range: tuple[float, float] = (0.0, 100.0), energy_range: tuple[float, float] = (0.0, 100.0),
-                 days_per_episode: int = 28, work_mets: float = 2.0):
+                 days_per_episode: int = 96, work_mets: float = 2.0):
 
         super().__init__()
 
@@ -39,7 +39,7 @@ class LifeStyleEnv(gym.Env):
         for i in range(22, 24):
             self.daily_schedule[i] = 'sleep'
 
-        self.action_space = gym.spaces.Discrete(8)
+        self.action_space = gym.spaces.Discrete(9)
 
         self.daily_nutrients_target = {
             "protein": 0.18,
@@ -141,16 +141,34 @@ class LifeStyleEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
+        mask = self.get_action_mask()
+        info["action_mask"] = mask 
+
         return observation, info
 
     def get_action_mask(self):
+        current_event = self.daily_schedule[self.state["current_timeslot"]]
+        current_energy = self.state["current_energy_level"]
+
         mask = [True] * self.action_space.n
-        current_timeslot = self.state["current_timeslot"]
-        
-        if self.daily_schedule[current_timeslot] in ['sleep', 'work']:
+        skip_action_index = 8
+        intense_exercise_index = 5
+        moderate_exercise_index = 4
+        light_exercise_index = 3
+
+        if current_event in ['sleep', 'work']:
             mask = [False] * self.action_space.n
-            
-        return mask
+            mask[skip_action_index] = True
+        else:
+            mask[skip_action_index] = False
+            if current_energy < 20:
+                mask[intense_exercise_index] = False
+            if current_energy < 15:
+                mask[moderate_exercise_index] = False
+            if current_energy < 10:
+                mask[light_exercise_index] = False
+
+        return np.array(mask, dtype=bool)
 
     def step(self, action):
 
@@ -193,6 +211,9 @@ class LifeStyleEnv(gym.Env):
                 self.state["daily_carbs_intake"] += (selected_meal["carbs_ratio"] * selected_meal["calories"]) / 4
                 self.state["daily_fiber_intake"] += selected_meal["fiber_g"]
 
+                self.state["current_hunger_level"] = max(self.min_hunger, self.state["current_hunger_level"] - [20,30,50][action])
+                self.state["current_energy_level"] = min(self.max_energy, self.state["current_energy_level"] + [20,30,50][action])
+
             
             elif action in [3, 4, 5]:
                 mets_levels = [2.0, 4.5, 9.0]  
@@ -209,15 +230,13 @@ class LifeStyleEnv(gym.Env):
                 self.state["current_energy_level"] = min(self.max_energy, self.state["current_energy_level"] + [10,16][action-6])
                 self.state["current_hunger_level"] = min(self.max_hunger, self.state["current_hunger_level"] + 2)
                 
-        
-        self.state["current_timeslot"] += 1
-        self.state["time_since_last_meal"] += 1
-        self.state["time_since_last_exercise"] += 1
+            elif action in [8]:
+                pass
 
-        if self.state["current_timeslot"] >= self.slots_per_day:
-            self.state["current_timeslot"] = 0
-            self.state["day_of_episode"] += 1
 
+        reward += self.get_reward()
+
+        if self.state["current_timeslot"] >= self.slots_per_day - 1:
             calorie_balance = self.state["daily_calories_intake"] - self.state["daily_calories_burned"]
 
             self.state["current_weight_kg"] += (calorie_balance / 7700)
@@ -227,6 +246,15 @@ class LifeStyleEnv(gym.Env):
 
             self.state["bmi_history"].append(self.state["current_bmi"])
             self.state["stress_level_history"].append(self.state["current_stress_level"])
+
+            bmi = self.state["current_bmi"]
+            target_bmi = self.target_bmi
+            bmi_difference = abs(bmi - target_bmi)
+            reward += 10.0 - (2 * (bmi_difference / max(target_bmi, 0.0001))) 
+
+            if abs(self.state["current_bmi"] - self.target_bmi) < 0.2:
+                terminated = True
+                reward += 100
 
             self.update_daily_nutrient_targets()
 
@@ -243,7 +271,19 @@ class LifeStyleEnv(gym.Env):
             for key in reset_keys:
                 self.state[key] = 0.0
 
-        reward += self.get_reward()
+            self.state["current_timeslot"] = 0
+            self.state["day_of_episode"] += 1
+        
+        else:
+            self.state["current_timeslot"] += 1
+
+
+        self.state["time_since_last_meal"] += 1
+        self.state["time_since_last_exercise"] += 1
+
+        if self.state["current_bmi"] > 40 or self.state["current_bmi"] < 16:
+            terminated = True       
+            reward -= 100
 
         observation = self._get_obs()
         info = self._get_info()
@@ -262,12 +302,6 @@ class LifeStyleEnv(gym.Env):
 
     def get_reward(self):
         reward = 0.0
-        
-        bmi = self.state["current_bmi"]
-        target_bmi = self.target_bmi
-        bmi_difference = abs(bmi - target_bmi)
-        reward += 2.0 - (2 * (bmi_difference / max(target_bmi, 0.0001)))
-
 
         current_stress = self.state["current_stress_level"]
         stress_min, stress_max = self.min_stress, self.max_stress
@@ -275,13 +309,17 @@ class LifeStyleEnv(gym.Env):
 
 
         hunger_level = self.state["current_hunger_level"]
-        time_since_meal = self.state["time_since_last_meal"]
-        normalized_hunger_above_threshold = max(0, hunger_level - 40) / (self.max_hunger - 40)
-        hunger_penalty = normalized_hunger_above_threshold * -1.0
-        time_above_threshold = max(0, time_since_meal - 5)
-        meal_timing_penalty = max(-1.0, time_above_threshold * -0.2)
+        normalized_hunger_above_threshold = max(0, hunger_level - 30) / (self.max_hunger - 30)
+        hunger_penalty_factor = normalized_hunger_above_threshold ** 2.0
+        hunger_penalty = hunger_penalty_factor * - 15
         reward += hunger_penalty 
+
+
+        time_since_meal = self.state["time_since_last_meal"]
+        time_above_threshold = max(0, time_since_meal - 5)
+        meal_timing_penalty = max(-20.0, time_above_threshold * -2)
         reward += meal_timing_penalty
+
 
         nutrients_reward_sum = 0
         nutrient_list = ["protein", "fat", "carbs", "saturated_fat", "fiber"]
@@ -294,9 +332,13 @@ class LifeStyleEnv(gym.Env):
             else:
                 normalized_error = 0
 
-            nutrients_reward_sum += max(0, 1 - normalized_error)
+            nutrients_reward_sum += max(0, 2 - normalized_error)
         
         reward += (nutrients_reward_sum / 5)
+
+
+        calories_reward = (self.state["daily_calories_burned"] - self.state["daily_calories_intake"]) * 0.0035
+        reward += calories_reward
 
         return reward
     
