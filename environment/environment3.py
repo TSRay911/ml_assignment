@@ -74,7 +74,7 @@ class LifeStyleEnv(gym.Env):
         }
 
         self.observation_space = gym.spaces.Dict({
-            "current_weight_kg": gym.spaces.Box(low=30.0, high=300.0, shape=(1,), dtype=np.float32), 
+            "current_weight_kg": gym.spaces.Box(low=0.0, high=650.0, shape=(1,), dtype=np.float32), 
             "current_bmi": gym.spaces.Box(low=10.0, high=80.0, shape=(1,), dtype=np.float32),     
             "current_stress_level": gym.spaces.Box(low=self.min_stress, high=self.max_stress, shape=(1,), dtype=np.float32),
             "current_hunger_level": gym.spaces.Box(low=self.min_hunger, high=self.max_hunger, shape=(1,), dtype=np.float32),
@@ -336,9 +336,12 @@ class LifeStyleEnv(gym.Env):
         
         reward += (nutrients_reward_sum / 5)
 
-
-        calories_reward = (self.state["daily_calories_burned"] - self.state["daily_calories_intake"]) * 0.005
-        reward += calories_reward
+        if self.state["current_bmi"] > self.target_bmi:
+            calories_reward = (self.state["daily_calories_burned"] - self.state["daily_calories_intake"]) * 0.005
+            reward += calories_reward
+        else:
+            calories_reward = (self.state["daily_calories_intake"] - self.state["daily_calories_burned"]) * 0.005
+            reward += calories_reward
 
         return reward
     
