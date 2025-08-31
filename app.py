@@ -143,7 +143,7 @@ with st.sidebar:
         st.success("Environment initialized with user input ✅")
 
 
-current, performance_chart = st.tabs(["Simulation", "Performance Comparision Chart"])
+current, plan, performance_chart = st.tabs(["Simulation", "Plan", "Performance Comparision Chart"])
 
 with current:
     st.subheader("Episode Simulation")
@@ -179,6 +179,10 @@ with current:
             time.sleep(1)
 
         st.header(f"Mean reward per step: {np.mean(st.session_state.reward_history):.2f}")
+
+with plan:
+    with st.container():
+        st.write("This is inside the container")
 
 with performance_chart:
     with st.container():
