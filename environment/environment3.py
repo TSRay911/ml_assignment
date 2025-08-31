@@ -305,7 +305,7 @@ class LifeStyleEnv(gym.Env):
 
         current_stress = self.state["current_stress_level"]
         stress_min, stress_max = self.min_stress, self.max_stress
-        reward += 1.0 - (2 * (current_stress - stress_min) / (stress_max - stress_min))
+        reward += 5 - (10 * (current_stress - stress_min) / (stress_max - stress_min))
 
 
         hunger_level = self.state["current_hunger_level"]

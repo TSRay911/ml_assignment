@@ -2,3 +2,5 @@ gymnasium
 numpy
 stable_baselines3
 streamlit 
+sb3-contrib
+streamlit-lottie
