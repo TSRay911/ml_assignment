@@ -9,9 +9,13 @@ from streamlit_lottie import st_lottie
 import time
 import json
 
+reward_history = []
+
 # ---------- Environment Wrapper ----------
 def make_env(is_eval: bool = False):
-    env = LifeStyleEnv()
+    env = LifeStyleEnv(st.session_state.initial_weight_kg, st.session_state.height_cm, 
+                       st.session_state.gender, st.session_state.target_bmi, 
+                       (0.0, 100.0), (0.0, 100.0), (0.0, 100.0), 365, st.session_state.work_mets)
     env = Monitor(env)
     if not is_eval:
         check_env(env, warn=True)
@@ -26,6 +30,7 @@ def run_episode_and_store():
 
     done = False
     step_history = [] 
+    reward_history = []
 
     while not done:
         action_masks = get_action_masks(unwrapped_env)
@@ -51,26 +56,33 @@ def run_episode_and_store():
             else:
                 visual = "assets/skip.json"
 
+        reward_history.append(reward)
+
         step_history.append({
-            "day": unwrapped_env.state['day_of_episode'],
-            "timeslot": unwrapped_env.state['current_timeslot'],
+            "day": unwrapped_env.state["day_of_episode"],
+            "timeslot": unwrapped_env.state["current_timeslot"],
             "action": action,
             "event": event_applied,
             "reward": reward,
-            "bmi": unwrapped_env.state['current_bmi'],
-            "stress": unwrapped_env.state['current_stress_level'],
-            "energy": unwrapped_env.state['current_energy_level'],
-            "hunger": unwrapped_env.state['current_hunger_level'],
-            "calories_in": unwrapped_env.state['daily_calories_intake'],
-            "calories_out": unwrapped_env.state['daily_calories_burned'],
+            "bmi": unwrapped_env.state["current_bmi"],
+            "stress": unwrapped_env.state["current_stress_level"],
+            "energy": unwrapped_env.state["current_energy_level"],
+            "hunger": unwrapped_env.state["current_hunger_level"],
+            "calories_in": unwrapped_env.state["daily_calories_intake"],
+            "calories_out": unwrapped_env.state["daily_calories_burned"],
             "visual": visual
         })
 
     st.session_state.history = step_history
+
+    st.session_state.reward_history = reward_history
     
 def load_lottie_file(file_path: str):
     with open(file_path, "r") as file:
         return json.load(file)
+
+def map_action(action):
+    return action_map.get(action, "Unknown action")
 
 action_map = {
     0: "Light meal",
@@ -81,13 +93,10 @@ action_map = {
     5: "Intense exercise",
     6: "Relaxation",
     7: "Sleep/nap",
-    8: "Skip / do nothing"
+    8: "Event action"
 }
 
 # ---------- Initialize session_state ----------
-if "eval_env" not in st.session_state:
-    st.session_state.eval_env = make_env(is_eval=True)
-
 if "init" not in st.session_state:
     st.session_state.init = True
     st.session_state.algorithm_option = "Placeholder"
@@ -99,16 +108,16 @@ if "init" not in st.session_state:
     st.session_state.work_mets = 2.0
     st.session_state.current_model = None   
     st.session_state.history = None
+    st.session_state.reward_history = []
     
+
+if "eval_env" not in st.session_state:
+    st.session_state.eval_env = make_env(is_eval=True)
 # ---------- Page Config ----------
 st.set_page_config(layout="wide")
 #st.title("Lifestyle Planner For Weight Management With Reinforcement Learning")
 
-if st.session_state.algorithm_option == "PPO":
-    if st.session_state.current_model is None: 
-        st.session_state.current_model = MaskablePPO.load(
-            "agent/ppo_lifestylecoach_best_entropy.zip"
-        )
+
 
 with st.sidebar:
     st.header("User's Information:")
@@ -120,7 +129,18 @@ with st.sidebar:
     st.session_state.algorithm_option = st.selectbox("Select an algorithm", ("PPO", "DQN", "Dyna-Q", "A2C"))
 
     if st.button("Load Agent"):
+        
+        st.session_state.eval_env = make_env(is_eval=True)
+
+        if st.session_state.algorithm_option == "PPO":
+            if st.session_state.current_model is None: 
+                st.session_state.current_model = MaskablePPO.load(
+                    "agent/ppo_lifestylecoach_best_entropy.zip"
+                )
+        
         run_episode_and_store()
+
+        st.success("Environment initialized with user input ✅")
 
 
 current, performance_chart = st.tabs(["Simulation", "Performance Comparision Chart"])
@@ -129,26 +149,36 @@ with current:
     st.subheader("Episode Simulation")
 
     if "history" in st.session_state and st.button("Replay Episode"):
-        col1, col2 = st.columns([3, 10])
+        col1, col2, col3, col4 = st.columns([1,5,3,3])
 
-        with col1:
-            visual_placeholder = st.empty()
         with col2:
+            visual_placeholder = st.empty()
+        with col3:
             text_placeholder = st.empty()
+
+        with col4:
+            st.markdown("### User Information")
+            st.write(f"Initial Weight: {st.session_state.initial_weight_kg} kg")
+            st.write(f"Height: {st.session_state.height_cm} cm")
+            st.write(f"Gender: {'Male' if int(st.session_state.gender) == 0 else 'Female'}")
+            st.write(f"Target BMI: {st.session_state.target_bmi}")
+            st.write(f"Work MET Level: {st.session_state.work_mets}")
 
         for step in st.session_state.history:
             with visual_placeholder.container():
-                st_lottie(load_lottie_file(step["visual"]))
+                st_lottie(load_lottie_file(step["visual"]),width=400,height=400)
 
             with text_placeholder.container():
-                st.subheader(f"Day {step['day'] + 1} | Timeslot {step['timeslot']}")
-                st.write(f"Action: {step['action']} | Event: {step['event']} | Reward: {step['reward']:.2f}")
-                st.write(
-                    f"BMI: {step['bmi']:.2f}, Stress: {step['stress']:.2f}, "
-                    f"Energy: {step['energy']:.2f}, Hunger: {step['hunger']:.2f}"
-                )
+                st.subheader(f"Day {step['day'] + 1}  | Timeslot {step['timeslot']}")
+                st.write(f"Event: {step['event']} | Action: {map_action(int(step['action']))}")
+                st.write(f"{'Current BMI: '}{step['bmi']:.2f} | {'Stress: '}{step['stress']:.2f}")
+                st.write(f"{'Energy: '}{step['energy']:.2f} | {'Hunger: '}{step['hunger']:.2f}")
+                st.write(f"Reward: {step['reward']:.2f}")
 
-            time.sleep(1)  
+
+            time.sleep(1)
+
+        st.header(f"Mean reward per step: {np.mean(st.session_state.reward_history):.2f}")
 
 with performance_chart:
     with st.container():
