@@ -8,6 +8,7 @@ from sb3_contrib.common.maskable.utils import get_action_masks
 from streamlit_lottie import st_lottie
 import time
 import json
+import pandas as pd
 
 reward_history = []
 
@@ -59,9 +60,9 @@ def run_episode_and_store():
         reward_history.append(reward)
 
         step_history.append({
-            "day": unwrapped_env.state["day_of_episode"],
+            "day": unwrapped_env.state["day_of_episode"] + 1,
             "timeslot": unwrapped_env.state["current_timeslot"],
-            "action": action,
+            "action": map_action(int(action)),
             "event": event_applied,
             "reward": reward,
             "bmi": unwrapped_env.state["current_bmi"],
@@ -74,8 +75,11 @@ def run_episode_and_store():
         })
 
     st.session_state.history = step_history
-
     st.session_state.reward_history = reward_history
+
+    df = pd.DataFrame(step_history)
+    df = df.drop(columns=['visual'])
+    st.session_state.history_df = df
     
 def load_lottie_file(file_path: str):
     with open(file_path, "r") as file:
@@ -100,7 +104,6 @@ action_map = {
 if "init" not in st.session_state:
     st.session_state.init = True
     st.session_state.algorithm_option = "Placeholder"
-    st.session_state.episode_rewards = []
     st.session_state.initial_weight_kg = 70
     st.session_state.height_cm = 170
     st.session_state.gender = 0
@@ -142,7 +145,6 @@ with st.sidebar:
 
         st.success("Environment initialized with user input ✅")
 
-
 current, plan, performance_chart = st.tabs(["Simulation", "Plan", "Performance Comparision Chart"])
 
 with current:
@@ -169,10 +171,11 @@ with current:
                 st_lottie(load_lottie_file(step["visual"]),width=400,height=400)
 
             with text_placeholder.container():
-                st.subheader(f"Day {step['day'] + 1}  | Timeslot {step['timeslot']}")
-                st.write(f"Event: {step['event']} | Action: {map_action(int(step['action']))}")
-                st.write(f"{'Current BMI: '}{step['bmi']:.2f} | {'Stress: '}{step['stress']:.2f}")
-                st.write(f"{'Energy: '}{step['energy']:.2f} | {'Hunger: '}{step['hunger']:.2f}")
+                st.subheader(f"Day {step['day']}  | Timeslot {step['timeslot']}")
+                st.write(f"Event: {step['event']} | Action: {step['action']}")
+                st.write(f"Current BMI: {step['bmi']:.2f} | Stress: {step['stress']:.2f}")
+                st.write(f"Energy: {step['energy']:.2f} | Hunger: {step['hunger']:.2f}")
+                st.write(f"Calories Intake:{step['calories_in']:.2f} | Calories Burned {step['calories_out']:.2f}")
                 st.write(f"Reward: {step['reward']:.2f}")
 
 
@@ -182,11 +185,14 @@ with current:
 
 with plan:
     with st.container():
-        st.write("This is inside the container")
+        if "history_df" in st.session_state:
+            st.subheader("Episode Data Table")
+            st.dataframe(st.session_state.history_df, use_container_width=True)
 
 with performance_chart:
     with st.container():
         st.write("This is inside the container")
+
 
 # CSS code
 st.markdown(
