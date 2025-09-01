@@ -281,7 +281,7 @@ class LifeStyleEnv(gym.Env):
         self.state["time_since_last_meal"] += 1
         self.state["time_since_last_exercise"] += 1
 
-        if self.state["current_bmi"] > 40 or self.state["current_bmi"] < 16:
+        if self.state["current_bmi"] > 40 or self.state["current_bmi"] < 12:
             terminated = True       
             reward -= 100
 
