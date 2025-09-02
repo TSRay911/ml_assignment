@@ -9,8 +9,8 @@ from streamlit_lottie import st_lottie
 import time
 import json
 import pandas as pd
+from environment.MaskableA2C import MaskableA2C
 
-reward_history = []
 
 # ---------- Environment Wrapper ----------
 def make_env(is_eval: bool = False):
@@ -22,7 +22,7 @@ def make_env(is_eval: bool = False):
         check_env(env, warn=True)
     return env
 
-def run_episode_and_store():
+def run_episode_and_store(model_name):
     eval_env = st.session_state.eval_env
     model = st.session_state.current_model
 
@@ -74,13 +74,13 @@ def run_episode_and_store():
             "visual": visual
         })
 
-    st.session_state.history = step_history
-    st.session_state.reward_history = reward_history
+    st.session_state.model_rewards[model] = reward_history
 
     df = pd.DataFrame(step_history)
-    df = df.drop(columns=['visual'])
-    st.session_state.history_df = df
-    
+    st.session_state.history_df[model_name] = df
+
+    return df
+ 
 def load_lottie_file(file_path: str):
     with open(file_path, "r") as file:
         return json.load(file)
@@ -103,22 +103,23 @@ action_map = {
 # ---------- Initialize session_state ----------
 if "init" not in st.session_state:
     st.session_state.init = True
-    st.session_state.algorithm_option = "Placeholder"
+    st.session_state.algorithm_option = "PPO"
     st.session_state.initial_weight_kg = 70
     st.session_state.height_cm = 170
     st.session_state.gender = 0
     st.session_state.target_bmi = 21.75
-    st.session_state.work_mets = 2.0
-    st.session_state.current_model = None   
-    st.session_state.history = None
-    st.session_state.reward_history = []
+    st.session_state.work_mets = 2.0 
+    st.session_state.model_rewards = {}
+    st.session_state.model_histories = {}
+    st.session_state.history_df = {}
+    st.session_state.current_model = MaskablePPO.load("environment/logs/ppo/ppo_best_model/best_model.zip")
     
 
 if "eval_env" not in st.session_state:
     st.session_state.eval_env = make_env(is_eval=True)
 # ---------- Page Config ----------
 st.set_page_config(layout="wide")
-#st.title("Lifestyle Planner For Weight Management With Reinforcement Learning")
+st.title("Lifestyle Planner For Weight Management With Reinforcement Learning")
 
 
 
@@ -132,25 +133,45 @@ with st.sidebar:
     st.session_state.algorithm_option = st.selectbox("Select an algorithm", ("PPO", "DQN", "Dyna-Q", "A2C"))
 
     if st.button("Load Agent"):
-        
-        st.session_state.eval_env = make_env(is_eval=True)
 
-        if st.session_state.algorithm_option == "PPO":
-            if st.session_state.current_model is None: 
-                st.session_state.current_model = MaskablePPO.load(
-                    "agent/ppo_lifestylecoach_best_entropy.zip"
-                )
+        algorithms = ["PPO", "DQN", "Dyna-Q", "A2C"]
         
-        run_episode_and_store()
+        for algorithm in algorithms:
+
+            st.write(f"Running simulation for {algorithm}...")
+            st.session_state.eval_env = make_env(is_eval=True)
+
+            if st.session_state.algorithm_option == "PPO":
+                st.session_state.current_model = MaskablePPO.load(
+                    "environment/logs/ppo/ppo_best_model/best_model.zip"
+                )
+            elif st.session_state.algorithm_option == "A2C":
+                st.session_state.current_model = MaskablePPO.load(
+                    "environment/logs/a2c/a2c_best_model/best_model.zip"
+                )
+            elif st.session_state.algorithm_option == "A2C":
+                st.session_state.current_model = MaskablePPO.load(
+                    "environment/logs/ppo/ppo_best_model/best_model.zip"
+                )
+            else:
+                st.session_state.current_model = MaskablePPO.load(
+                    "environment/logs/ppo/ppo_best_model/best_model.zip"
+                )
+
+            st.session_state.model_histories[algorithm] = run_episode_and_store(algorithm)
 
         st.success("Environment initialized with user input ✅")
 
 current, plan, performance_chart = st.tabs(["Simulation", "Plan", "Performance Comparision Chart"])
 
+
 with current:
     st.subheader("Episode Simulation")
 
-    if "history" in st.session_state and st.button("Replay Episode"):
+    if st.button("Replay Episode"):
+
+        history = st.session_state.model_histories[st.session_state.algorithm_option].to_dict("records")
+
         col1, col2, col3, col4 = st.columns([1,5,3,3])
 
         with col2:
@@ -166,8 +187,11 @@ with current:
             st.write(f"Target BMI: {st.session_state.target_bmi}")
             st.write(f"Work MET Level: {st.session_state.work_mets}")
 
-        for step in st.session_state.history:
+
+
+        for step in history:
             with visual_placeholder.container():
+                st.subheader(f"Current Algorithm: {st.session_state.algorithm_option}")
                 st_lottie(load_lottie_file(step["visual"]),width=400,height=400)
 
             with text_placeholder.container():
@@ -181,13 +205,20 @@ with current:
 
             time.sleep(1)
 
-        st.header(f"Mean reward per step: {np.mean(st.session_state.reward_history):.2f}")
+        st.header(f"Mean reward per step: {np.mean(st.session_state.model_rewards[st.session_state.algorithm_option])}")
 
 with plan:
     with st.container():
         if "history_df" in st.session_state:
             st.subheader("Episode Data Table")
-            st.dataframe(st.session_state.history_df, use_container_width=True)
+            st.write(f"Current algorithm: {st.session_state.algorithm_option}")
+            if "history_df" in st.session_state and st.session_state.algorithm_option in st.session_state.history_df:
+                st.dataframe(
+                    st.session_state.history_df[st.session_state.algorithm_option],
+                    width="stretch"
+                )
+            else:
+                st.warning("No history available for the selected algorithm")
 
 with performance_chart:
     with st.container():
