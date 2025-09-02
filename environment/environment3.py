@@ -231,6 +231,7 @@ class LifeStyleEnv(gym.Env):
                 self.state["current_hunger_level"] = min(self.max_hunger, self.state["current_hunger_level"] + 2)
                 
             elif action in [8]:
+                reward += -15
                 pass
 
 
@@ -305,7 +306,7 @@ class LifeStyleEnv(gym.Env):
 
         current_stress = self.state["current_stress_level"]
         stress_min, stress_max = self.min_stress, self.max_stress
-        reward += 5 - (10 * (current_stress - stress_min) / (stress_max - stress_min))
+        reward += 10 - (20 * (current_stress - stress_min) / (stress_max - stress_min))
 
 
         hunger_level = self.state["current_hunger_level"]
@@ -337,10 +338,10 @@ class LifeStyleEnv(gym.Env):
         reward += (nutrients_reward_sum / 5)
 
         if self.state["current_bmi"] > self.target_bmi:
-            calories_reward = (self.state["daily_calories_burned"] - self.state["daily_calories_intake"]) * 0.005
+            calories_reward = (self.state["daily_calories_burned"] - self.state["daily_calories_intake"]) * 0.0045
             reward += calories_reward
         else:
-            calories_reward = (self.state["daily_calories_intake"] - self.state["daily_calories_burned"]) * 0.005
+            calories_reward = (self.state["daily_calories_intake"] - self.state["daily_calories_burned"]) * 0.0045
             reward += calories_reward
 
         return reward
