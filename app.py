@@ -1,5 +1,5 @@
 import streamlit as st
-from environment.environment3 import LifeStyleEnv
+from training.environment3 import LifeStyleEnv
 import numpy as np
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.monitor import Monitor
@@ -10,7 +10,7 @@ import time
 import json
 import pandas as pd
 import altair as alt
-from environment.MaskableA2C import MaskableA2C
+from training.MaskableA2C import MaskableA2C
 from stable_baselines3 import DQN
 
 
@@ -203,7 +203,7 @@ with st.sidebar:
 
             if algorithm == "PPO":
                 st.session_state.current_model = MaskablePPO.load(
-                    "environment/logs/ppo/ppo_best_model/best_model.zip"
+                    "environment/logs/ppo/ppo_best_model_fined_tuned2/best_model.zip"
                 )
             elif algorithm == "A2C":
                 st.session_state.current_model = MaskableA2C.load(
@@ -211,7 +211,7 @@ with st.sidebar:
                 )
             elif algorithm == "DQN":
                 st.session_state.current_model = DQN.load(
-                    "environment/logs/dqn/dqn_best_model_fined_tuned4/best_model.zip"
+                    "environment/logs/dqn/dqn_best_model_fined_tuned5/best_model.zip"
                 )
             else:
                 st.session_state.current_model = MaskableA2C.load(
