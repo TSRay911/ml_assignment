@@ -211,7 +211,7 @@ with st.sidebar:
                 )
             elif algorithm == "DQN":
                 st.session_state.current_model = DQN.load(
-                    "environment/logs/dqn/dqn_best_model/best_model.zip"
+                    "environment/logs/dqn/dqn_best_model_fined_tuned4/best_model.zip"
                 )
             else:
                 st.session_state.current_model = MaskableA2C.load(
