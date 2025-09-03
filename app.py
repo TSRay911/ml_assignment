@@ -141,6 +141,7 @@ def run_episode_and_store_dqn(model_name):
 
     return df
 
+
 def load_lottie_file(file_path: str):
     with open(file_path, "r") as file:
         return json.load(file)
@@ -214,12 +215,12 @@ with st.sidebar:
                     "environment/logs/dqn/dqn_best_model_fined_tuned5/best_model.zip"
                 )
             else:
-                st.session_state.current_model = MaskableA2C.load(
-                    "environment/logs/a2c/a2c_best_model/best_model.zip"
-                )
+                pass # Here add your dyna q
 
             if algorithm != "DQN":
                 st.session_state.model_histories[algorithm] = run_episode_and_store(algorithm)
+            elif algorithm == "Dyna-Q":
+                pass # Here add your dyna q
             else:
                 st.session_state.model_histories[algorithm] = run_episode_and_store_dqn(algorithm)
 
