@@ -184,12 +184,18 @@ class LifeStyleEnv(gym.Env):
             self.state["current_energy_level"] = max(self.min_energy, self.state["current_energy_level"] - 5)
             self.state["current_hunger_level"] = min(self.max_hunger, self.state["current_hunger_level"] + 5)
             self.state["daily_calories_burned"] += (self.work_mets * self.state["current_weight_kg"] * 3.5 / 200) * 60
+
+            if action in [0, 1, 2, 3, 4, 5, 6, 7]:
+                reward += -15
         
         elif schedule_event == "sleep":
             self.state["current_energy_level"] = min(self.max_energy, self.state["current_energy_level"] + 4)
             self.state["current_stress_level"] = max(self.min_stress, self.state["current_stress_level"] - 4)
             self.state["current_hunger_level"] = max(self.min_hunger, self.state["current_hunger_level"] - 2)
             self.state["daily_calories_burned"] += (0.9 * self.state["current_weight_kg"] * 3.5 / 200) * 60
+
+            if action in [0, 1, 2, 3, 4, 5, 6, 7]:
+                reward += -15
 
         else:
             if action in [0, 1, 2]:
@@ -257,6 +263,10 @@ class LifeStyleEnv(gym.Env):
                 terminated = True
                 reward += 100
 
+            if self.state["current_bmi"] > 40 or self.state["current_bmi"] < 12:
+                terminated = True       
+                reward -= 100
+
             self.update_daily_nutrient_targets()
 
             reset_keys = [
@@ -281,10 +291,6 @@ class LifeStyleEnv(gym.Env):
 
         self.state["time_since_last_meal"] += 1
         self.state["time_since_last_exercise"] += 1
-
-        if self.state["current_bmi"] > 40 or self.state["current_bmi"] < 12:
-            terminated = True       
-            reward -= 100
 
         observation = self._get_obs()
         info = self._get_info()

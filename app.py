@@ -9,7 +9,9 @@ from streamlit_lottie import st_lottie
 import time
 import json
 import pandas as pd
+import altair as alt
 from environment.MaskableA2C import MaskableA2C
+from stable_baselines3 import DQN
 
 
 # ---------- Environment Wrapper ----------
@@ -81,6 +83,64 @@ def run_episode_and_store(model_name):
 
     return df
  
+def run_episode_and_store_dqn(model_name):
+    eval_env = st.session_state.eval_env
+    model = st.session_state.current_model
+
+    obs, info = eval_env.reset()
+    unwrapped_env = eval_env.unwrapped
+
+    done = False
+    step_history = [] 
+    reward_history = []
+
+    while not done:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, terminated, truncated, info = eval_env.step(action)
+        done = terminated or truncated
+
+        timeslot_applied = unwrapped_env.state["current_timeslot"] - 1
+        timeslot_applied = max(timeslot_applied, 0)
+        event_applied = unwrapped_env.daily_schedule[timeslot_applied]
+
+        if event_applied == "work":
+            visual = "assets/work.json"
+        elif event_applied == "sleep":
+            visual = "assets/sleep.json"
+        else:
+            if action in [0, 1, 2]:
+                visual = "assets/eat.json"
+            elif action in [3, 4, 5]:
+                visual = "assets/exercise.json"
+            elif action in [6, 7]:
+                visual = "assets/rest.json"
+            else:
+                visual = "assets/skip.json"
+
+        reward_history.append(reward)
+
+        step_history.append({
+            "day": unwrapped_env.state["day_of_episode"] + 1,
+            "timeslot": unwrapped_env.state["current_timeslot"],
+            "action": map_action(int(action)),
+            "event": event_applied,
+            "reward": reward,
+            "bmi": unwrapped_env.state["current_bmi"],
+            "stress": unwrapped_env.state["current_stress_level"],
+            "energy": unwrapped_env.state["current_energy_level"],
+            "hunger": unwrapped_env.state["current_hunger_level"],
+            "calories_in": unwrapped_env.state["daily_calories_intake"],
+            "calories_out": unwrapped_env.state["daily_calories_burned"],
+            "visual": visual
+        })
+
+    st.session_state.model_rewards[model] = reward_history
+
+    df = pd.DataFrame(step_history)
+    st.session_state.history_df[model_name] = df
+
+    return df
+
 def load_lottie_file(file_path: str):
     with open(file_path, "r") as file:
         return json.load(file)
@@ -141,24 +201,27 @@ with st.sidebar:
             st.write(f"Running simulation for {algorithm}...")
             st.session_state.eval_env = make_env(is_eval=True)
 
-            if st.session_state.algorithm_option == "PPO":
+            if algorithm == "PPO":
                 st.session_state.current_model = MaskablePPO.load(
                     "environment/logs/ppo/ppo_best_model/best_model.zip"
                 )
-            elif st.session_state.algorithm_option == "A2C":
-                st.session_state.current_model = MaskablePPO.load(
+            elif algorithm == "A2C":
+                st.session_state.current_model = MaskableA2C.load(
                     "environment/logs/a2c/a2c_best_model/best_model.zip"
                 )
-            elif st.session_state.algorithm_option == "A2C":
-                st.session_state.current_model = MaskablePPO.load(
-                    "environment/logs/ppo/ppo_best_model/best_model.zip"
+            elif algorithm == "DQN":
+                st.session_state.current_model = DQN.load(
+                    "environment/logs/dqn/dqn_best_model/best_model.zip"
                 )
             else:
-                st.session_state.current_model = MaskablePPO.load(
-                    "environment/logs/ppo/ppo_best_model/best_model.zip"
+                st.session_state.current_model = MaskableA2C.load(
+                    "environment/logs/a2c/a2c_best_model/best_model.zip"
                 )
 
-            st.session_state.model_histories[algorithm] = run_episode_and_store(algorithm)
+            if algorithm != "DQN":
+                st.session_state.model_histories[algorithm] = run_episode_and_store(algorithm)
+            else:
+                st.session_state.model_histories[algorithm] = run_episode_and_store_dqn(algorithm)
 
         st.success("Environment initialized with user input ✅")
 
@@ -212,18 +275,113 @@ with plan:
         if "history_df" in st.session_state:
             st.subheader("Episode Data Table")
             st.write(f"Current algorithm: {st.session_state.algorithm_option}")
-            if "history_df" in st.session_state and st.session_state.algorithm_option in st.session_state.history_df:
-                st.dataframe(
-                    st.session_state.history_df[st.session_state.algorithm_option],
-                    width="stretch"
-                )
-            else:
-                st.warning("No history available for the selected algorithm")
+            if st.button("Show Latest Data"):
+                if ("history_df" in st.session_state and st.session_state.algorithm_option in st.session_state.history_df):
+                    st.dataframe(st.session_state.history_df[st.session_state.algorithm_option],width="stretch")
+                else:
+                    st.warning("No history available for the selected algorithm")
 
+# Main content
 with performance_chart:
-    with st.container():
-        st.write("This is inside the container")
+    st.header("Algorithm Performance Comparison")
+    if not st.session_state.model_histories:
+        st.info("Run simulations from the sidebar to see performance charts.")
+    else:
+        # Get a list of all available algorithms
+        available_algorithms = list(st.session_state.model_histories.keys())
+        
+        # Checkbox for selecting which algorithms to display
+        selected_algorithms = st.multiselect(
+            "Select algorithms to display on charts:",
+            options=available_algorithms,
+            default=available_algorithms
+        )
+        
+        if not selected_algorithms:
+            st.warning("Please select at least one algorithm to display.")
+        else:
+            all_histories = []
+            for algorithm in selected_algorithms:
+                df = st.session_state.model_histories[algorithm]
+                temp_df = df.copy()
+                temp_df['algorithm'] = algorithm
+                temp_df['step'] = range(len(temp_df))
+                all_histories.append(temp_df)
+            
+            combined_df = pd.concat(all_histories, ignore_index=True)
 
+            # Cumulative Reward Chart
+            st.subheader("Cumulative Reward Comparison")
+            combined_df['cumulative_reward'] = combined_df.groupby('algorithm')['reward'].cumsum()
+            reward_chart = (alt.Chart(combined_df)
+                            .mark_line()
+                            .encode(
+                                x=alt.X('step', title='Step'),
+                                y=alt.Y('cumulative_reward', title='Cumulative Reward'),
+                                color=alt.Color('algorithm', title='Algorithm'),
+                                tooltip=['step', 'cumulative_reward', 'algorithm']
+                                ).properties(
+                                    title='Cumulative Reward Per Step Across Algorithms')
+                        )
+            st.altair_chart(reward_chart, use_container_width=True)
+
+            # BMI Trajectory Chart
+            st.subheader("BMI Trajectory Comparison")
+            bmi_chart = (alt.Chart(combined_df)
+                         .mark_line()
+                         .encode(
+                             x=alt.X('step', title='Step'),
+                             y=alt.Y('bmi', title='BMI', scale=alt.Scale(zero=False)),
+                             color=alt.Color('algorithm', title='Algorithm'),
+                             tooltip=['step', 'bmi', 'algorithm']
+                             ).properties(
+                                 title='BMI Trajectory Across Algorithms')
+                        )
+            st.altair_chart(bmi_chart, use_container_width=True)
+
+            # Stress Level Chart
+            st.subheader("Stress Level Comparison")
+            stress_chart = (alt.Chart(combined_df)
+                            .mark_line(strokeWidth=3.0)
+                            .encode(
+                                x=alt.X('step', title='Step'),
+                                y=alt.Y('stress', title='Stress Level', scale=alt.Scale(zero=False)),
+                                color=alt.Color('algorithm', title='Algorithm'),
+                                tooltip=['step', 'stress', 'algorithm']
+                            ).properties(
+                                title='Stress Level Across Algorithms').interactive()
+                        )
+            st.altair_chart(stress_chart, use_container_width=True)
+            
+            # Calories Chart
+            st.subheader("Calories Intake (Kcal)")
+            calories_intake_chart = (alt.Chart(combined_df)
+                                .mark_line()
+                                .encode(
+                                    x=alt.X('step', title='Steps'),
+                                    y=alt.Y('calories_in', title='Calories Intake (Kcal)'),
+                                    color=alt.Color('algorithm', title='Algorithm'),
+                                    tooltip=['step', 'calories_in', 'algorithm']
+                                ).properties(
+                                    title='Daily Calories Intake'
+                                ).interactive()
+                            )
+            st.altair_chart(calories_intake_chart, use_container_width=True)
+
+            # Calories Chart
+            st.subheader("Calories Burned (Kcal)")
+            calories_expenditure_chart = (alt.Chart(combined_df)
+                                .mark_line()
+                                .encode(
+                                    x=alt.X('step', title='Steps'),
+                                    y=alt.Y('calories_out', title='Calories Burned (Kcal)'),
+                                    color=alt.Color('algorithm', title='Algorithm'),
+                                    tooltip=['step', 'calories_out', 'algorithm']
+                                ).properties(
+                                    title='Daily Calories Expenditure'
+                                ).interactive()
+                            )
+            st.altair_chart(calories_expenditure_chart, use_container_width=True)
 
 # CSS code
 st.markdown(
