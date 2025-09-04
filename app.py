@@ -12,6 +12,8 @@ import pandas as pd
 import altair as alt
 from training.MaskableA2C import MaskableA2C
 from stable_baselines3 import DQN
+from training.dyna_q_lifestyle import DynaQLifestyle
+
 
 
 # ---------- Environment Wrapper ----------
@@ -62,18 +64,18 @@ def run_episode_and_store(model_name):
         reward_history.append(reward)
 
         step_history.append({
-            "day": unwrapped_env.state["day_of_episode"] + 1,
-            "timeslot": unwrapped_env.state["current_timeslot"],
-            "action": map_action(int(action)),
-            "event": event_applied,
-            "reward": reward,
-            "bmi": unwrapped_env.state["current_bmi"],
-            "stress": unwrapped_env.state["current_stress_level"],
-            "energy": unwrapped_env.state["current_energy_level"],
-            "hunger": unwrapped_env.state["current_hunger_level"],
-            "calories_in": unwrapped_env.state["daily_calories_intake"],
-            "calories_out": unwrapped_env.state["daily_calories_burned"],
-            "visual": visual
+            "Day": unwrapped_env.state["day_of_episode"] + 1,
+            "Timeslot": unwrapped_env.state["current_timeslot"],
+            "Action": map_action(int(action)),
+            "Event": event_applied,
+            "Reward": reward,
+            "BMI": unwrapped_env.state["current_bmi"],
+            "Stress": unwrapped_env.state["current_stress_level"],
+            "Energy": unwrapped_env.state["current_energy_level"],
+            "Hunger": unwrapped_env.state["current_hunger_level"],
+            "Calories_intake": unwrapped_env.state["daily_calories_intake"],
+            "Calories_burned": unwrapped_env.state["daily_calories_burned"],
+            "Visual": visual
         })
 
     st.session_state.model_rewards[model] = reward_history
@@ -120,18 +122,18 @@ def run_episode_and_store_dqn(model_name):
         reward_history.append(reward)
 
         step_history.append({
-            "day": unwrapped_env.state["day_of_episode"] + 1,
-            "timeslot": unwrapped_env.state["current_timeslot"],
-            "action": map_action(int(action)),
-            "event": event_applied,
-            "reward": reward,
-            "bmi": unwrapped_env.state["current_bmi"],
-            "stress": unwrapped_env.state["current_stress_level"],
-            "energy": unwrapped_env.state["current_energy_level"],
-            "hunger": unwrapped_env.state["current_hunger_level"],
-            "calories_in": unwrapped_env.state["daily_calories_intake"],
-            "calories_out": unwrapped_env.state["daily_calories_burned"],
-            "visual": visual
+            "Day": unwrapped_env.state["day_of_episode"] + 1,
+            "Timeslot": unwrapped_env.state["current_timeslot"],
+            "Action": map_action(int(action)),
+            "Event": event_applied,
+            "Reward": reward,
+            "BMI": unwrapped_env.state["current_bmi"],
+            "Stress": unwrapped_env.state["current_stress_level"],
+            "Energy": unwrapped_env.state["current_energy_level"],
+            "Hunger": unwrapped_env.state["current_hunger_level"],
+            "Calories_intake": unwrapped_env.state["daily_calories_intake"],
+            "Calories_burned": unwrapped_env.state["daily_calories_burned"],
+            "Visual": visual
         })
 
     st.session_state.model_rewards[model] = reward_history
@@ -141,6 +143,15 @@ def run_episode_and_store_dqn(model_name):
 
     return df
 
+def _visual(row):
+                    if row["Event"] == "work":   return "assets/work.json"
+                    if row["Event"] == "sleep":  return "assets/sleep.json"
+                    a = str(row["Action"])
+                    if a.startswith("meal"):      return "assets/eat.json"
+                    if a.startswith("exercise"):  return "assets/exercise.json"
+                    if a.startswith("rest"):      return "assets/rest.json"
+                    if a == "skip":               return "assets/skip.json"
+                    return "assets/skip.json"
 
 def load_lottie_file(file_path: str):
     with open(file_path, "r") as file:
@@ -165,7 +176,7 @@ action_map = {
 if "init" not in st.session_state:
     st.session_state.init = True
     st.session_state.algorithm_option = "PPO"
-    st.session_state.initial_weight_kg = 70
+    st.session_state.initial_weight_kg = 85
     st.session_state.height_cm = 170
     st.session_state.gender = 0
     st.session_state.target_bmi = 21.75
@@ -173,11 +184,12 @@ if "init" not in st.session_state:
     st.session_state.model_rewards = {}
     st.session_state.model_histories = {}
     st.session_state.history_df = {}
-    st.session_state.current_model = MaskablePPO.load("environment/logs/ppo/ppo_best_model/best_model.zip")
+    st.session_state.current_model = MaskablePPO.load("training/logs/ppo/ppo_best_model_fined_tuned2/best_model.zip")
     
 
 if "eval_env" not in st.session_state:
     st.session_state.eval_env = make_env(is_eval=True)
+
 # ---------- Page Config ----------
 st.set_page_config(layout="wide")
 st.title("Lifestyle Planner For Weight Management With Reinforcement Learning")
@@ -186,7 +198,7 @@ st.title("Lifestyle Planner For Weight Management With Reinforcement Learning")
 
 with st.sidebar:
     st.header("User's Information:")
-    st.session_state.initial_weight_kg = st.number_input("Enter Initial Weight (KG):", min_value=0.0, max_value=650.0, step=5.0, value=70.0)
+    st.session_state.initial_weight_kg = st.number_input("Enter Initial Weight (KG):", min_value=0.0, max_value=650.0, step=5.0, value=85.0)
     st.session_state.height_cm = st.number_input("Enter Height (CM):", min_value=0.0, max_value=300.0, step=5.0, value=170.0)
     st.session_state.gender = st.radio("What's your Gender (0 - Male, 1 - Female)", ["0", "1"])
     st.session_state.target_bmi = st.number_input("Enter Target BMI:", min_value=10.0, max_value=80.0, step=0.5, value=21.75)
@@ -204,23 +216,47 @@ with st.sidebar:
 
             if algorithm == "PPO":
                 st.session_state.current_model = MaskablePPO.load(
-                    "environment/logs/ppo/ppo_best_model_fined_tuned2/best_model.zip"
+                    "training/logs/ppo/ppo_best_model_fined_tuned2/best_model.zip"
                 )
             elif algorithm == "A2C":
                 st.session_state.current_model = MaskableA2C.load(
-                    "environment/logs/a2c/a2c_best_model/best_model.zip"
+                    "training/logs/a2c/a2c_best_model/best_model.zip"
                 )
             elif algorithm == "DQN":
                 st.session_state.current_model = DQN.load(
-                    "environment/logs/dqn/dqn_best_model_fined_tuned5/best_model.zip"
+                    "training/logs/dqn/dqn_best_model_fined_tuned5/best_model.zip"
                 )
             else:
-                pass # Here add your dyna q
+                st.session_state.current_model = DynaQLifestyle.load_q(
+                    "training/saved_models/dyna_q_final_best.json"
+                )
 
-            if algorithm != "DQN":
+            if algorithm in ["PPO", "A2C"]:
                 st.session_state.model_histories[algorithm] = run_episode_and_store(algorithm)
             elif algorithm == "Dyna-Q":
-                pass # Here add your dyna q
+
+                rows, total_reward, a_hist = DynaQLifestyle.run_episode(
+                    st.session_state.current_model, st.session_state.eval_env, seed=999
+                )
+
+                df = pd.DataFrame(
+                    rows,
+                    columns=[
+                        "Day", "Timeslot", "Action", "Event",
+                        "Reward", "BMI", "Stress", "Energy", 
+                        "Hunger", "Calories_intake", "Calories_burned" 
+                    ]
+                )
+
+                df["Visual"] = df.apply(_visual, axis=1)
+
+                for col in ["BMI","Stress","Energy","Hunger","Calories_intake","Calories_burned","Reward"]:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+   
+                st.session_state.history_df[algorithm] = df
+                st.session_state.model_histories[algorithm] = df
+                st.session_state.model_rewards[algorithm] = df["Reward"].tolist()
+
             else:
                 st.session_state.model_histories[algorithm] = run_episode_and_store_dqn(algorithm)
 
@@ -256,15 +292,15 @@ with current:
         for step in history:
             with visual_placeholder.container():
                 st.subheader(f"Current Algorithm: {st.session_state.algorithm_option}")
-                st_lottie(load_lottie_file(step["visual"]),width=400,height=400)
+                st_lottie(load_lottie_file(step["Visual"]),width=400,height=400)
 
             with text_placeholder.container():
-                st.subheader(f"Day {step['day']}  | Timeslot {step['timeslot']}")
-                st.write(f"Event: {step['event']} | Action: {step['action']}")
-                st.write(f"Current BMI: {step['bmi']:.2f} | Stress: {step['stress']:.2f}")
-                st.write(f"Energy: {step['energy']:.2f} | Hunger: {step['hunger']:.2f}")
-                st.write(f"Calories Intake:{step['calories_in']:.2f} | Calories Burned {step['calories_out']:.2f}")
-                st.write(f"Reward: {step['reward']:.2f}")
+                st.subheader(f"Day {step['Day']}  | Timeslot {step['Timeslot']}")
+                st.write(f"Event: {step['Event']} | Action: {step['Action']}")
+                st.write(f"Current BMI: {step['BMI']:.2f} | Stress: {step['Stress']:.2f}")
+                st.write(f"Energy: {step['Energy']:.2f} | Hunger: {step['Hunger']:.2f}")
+                st.write(f"Calories Intake:{step['Calories_intake']:.2f} | Calories Burned {step['Calories_burned']:.2f}")
+                st.write(f"Reward: {step['Reward']:.2f}")
 
 
             time.sleep(1)
@@ -313,7 +349,8 @@ with performance_chart:
 
             # Cumulative Reward Chart
             st.subheader("Cumulative Reward Comparison")
-            combined_df['cumulative_reward'] = combined_df.groupby('algorithm')['reward'].cumsum()
+            combined_df['cumulative_reward'] = combined_df.groupby('algorithm')['Reward'].cumsum()
+
             reward_chart = (alt.Chart(combined_df)
                             .mark_line()
                             .encode(
@@ -326,15 +363,38 @@ with performance_chart:
                         )
             st.altair_chart(reward_chart, use_container_width=True)
 
+            # Mean Reward Bar Chart
+            mean_rewards_df = (
+                combined_df.groupby('algorithm', as_index=False)['Reward']
+                .mean()
+                .rename(columns={'Reward': 'mean_reward'})
+            )
+            
+            st.subheader("Mean Reward per Algorithm")
+            mean_reward_bar = (alt.Chart(mean_rewards_df)
+                            .mark_bar()
+                            .encode(
+                                x=alt.X('algorithm', title='Algorithm'),
+                                y=alt.Y('mean_reward', title='Mean Reward'),
+                                color=alt.Color('algorithm', legend=None),
+                                tooltip=['algorithm', 'mean_reward']
+                            )
+                            .properties(
+                                title='Average Reward per Step (Mean)'
+                            ))
+            st.altair_chart(mean_reward_bar, use_container_width=True)
+
+
+
             # BMI Trajectory Chart
             st.subheader("BMI Trajectory Comparison")
             bmi_chart = (alt.Chart(combined_df)
                          .mark_line()
                          .encode(
                              x=alt.X('step', title='Step'),
-                             y=alt.Y('bmi', title='BMI', scale=alt.Scale(zero=False)),
+                             y=alt.Y('BMI', title='BMI', scale=alt.Scale(zero=False)),
                              color=alt.Color('algorithm', title='Algorithm'),
-                             tooltip=['step', 'bmi', 'algorithm']
+                             tooltip=['step', 'BMI', 'algorithm']
                              ).properties(
                                  title='BMI Trajectory Across Algorithms')
                         )
@@ -346,9 +406,9 @@ with performance_chart:
                             .mark_line(strokeWidth=3.0)
                             .encode(
                                 x=alt.X('step', title='Step'),
-                                y=alt.Y('stress', title='Stress Level', scale=alt.Scale(zero=False)),
+                                y=alt.Y('Stress', title='Stress Level', scale=alt.Scale(zero=False)),
                                 color=alt.Color('algorithm', title='Algorithm'),
-                                tooltip=['step', 'stress', 'algorithm']
+                                tooltip=['step', 'Stress', 'algorithm']
                             ).properties(
                                 title='Stress Level Across Algorithms').interactive()
                         )
@@ -360,9 +420,9 @@ with performance_chart:
                                 .mark_line()
                                 .encode(
                                     x=alt.X('step', title='Steps'),
-                                    y=alt.Y('calories_in', title='Calories Intake (Kcal)'),
+                                    y=alt.Y('Calories_intake', title='Calories Intake (Kcal)'),
                                     color=alt.Color('algorithm', title='Algorithm'),
-                                    tooltip=['step', 'calories_in', 'algorithm']
+                                    tooltip=['step', 'Calories_intake', 'algorithm']
                                 ).properties(
                                     title='Daily Calories Intake'
                                 ).interactive()
@@ -375,9 +435,9 @@ with performance_chart:
                                 .mark_line()
                                 .encode(
                                     x=alt.X('step', title='Steps'),
-                                    y=alt.Y('calories_out', title='Calories Burned (Kcal)'),
+                                    y=alt.Y('Calories_burned', title='Calories Burned (Kcal)'),
                                     color=alt.Color('algorithm', title='Algorithm'),
-                                    tooltip=['step', 'calories_out', 'algorithm']
+                                    tooltip=['step', 'Calories_burned', 'algorithm']
                                 ).properties(
                                     title='Daily Calories Expenditure'
                                 ).interactive()
