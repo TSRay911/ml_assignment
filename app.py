@@ -205,7 +205,7 @@ with st.sidebar:
     st.session_state.work_mets = st.number_input("Work MET Level (1-12):", min_value=1.0, max_value=12.0, step=0.5, value=2.0)
     st.session_state.algorithm_option = st.selectbox("Select an algorithm", ("PPO", "DQN", "Dyna-Q", "A2C"))
 
-    if st.button("Load Agent"):
+    if st.button("Run Simulation"):
 
         algorithms = ["PPO", "DQN", "Dyna-Q", "A2C"]
         
@@ -266,9 +266,9 @@ current, plan, performance_chart = st.tabs(["Simulation", "Plan", "Performance C
 
 
 with current:
-    st.subheader("Episode Simulation")
+    st.subheader("Algorithm Simulation")
 
-    if st.button("Replay Episode"):
+    if st.button("Replay Simulation"):
 
         history = st.session_state.model_histories[st.session_state.algorithm_option].to_dict("records")
 
@@ -349,7 +349,7 @@ with performance_chart:
 
             avg_episode_length_df = (
                 combined_df.groupby('algorithm', as_index=False)['Day']
-                .mean()
+                .max()
                 .rename(columns={'Day': 'average_episode_length'})
             )
 
