@@ -284,6 +284,7 @@ with current:
             st.write(f"Initial Weight: {st.session_state.initial_weight_kg} kg")
             st.write(f"Height: {st.session_state.height_cm} cm")
             st.write(f"Gender: {'Male' if int(st.session_state.gender) == 0 else 'Female'}")
+            st.write(f"Initial BMI: {st.session_state.initial_weight_kg/((st.session_state.height_cm / 100) ** 2):.2f}")
             st.write(f"Target BMI: {st.session_state.target_bmi}")
             st.write(f"Work MET Level: {st.session_state.work_mets}")
 

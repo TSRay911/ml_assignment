@@ -5,3 +5,4 @@ streamlit
 sb3-contrib
 streamlit-lottie
 tensorflow
+tabulate
