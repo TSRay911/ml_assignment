@@ -201,7 +201,7 @@ with st.sidebar:
     st.session_state.initial_weight_kg = st.number_input("Enter Initial Weight (KG):", min_value=0.0, max_value=650.0, step=5.0, value=85.0)
     st.session_state.height_cm = st.number_input("Enter Height (CM):", min_value=0.0, max_value=300.0, step=5.0, value=170.0)
     st.session_state.gender = st.radio("What's your Gender (0 - Male, 1 - Female)", ["0", "1"])
-    st.session_state.target_bmi = st.number_input("Enter Target BMI:", min_value=10.0, max_value=80.0, step=0.5, value=21.75)
+    st.session_state.target_bmi = st.number_input("Target BMI:", min_value=10.0, max_value=80.0, step=0.5, value=21.7, disabled=True)
     st.session_state.work_mets = st.number_input("Work MET Level (1-12):", min_value=1.0, max_value=12.0, step=0.5, value=2.0)
     st.session_state.algorithm_option = st.selectbox("Select an algorithm", ("PPO", "DQN", "Dyna-Q", "A2C"))
 
@@ -236,7 +236,7 @@ with st.sidebar:
             elif algorithm == "Dyna-Q":
 
                 rows, total_reward, a_hist = DynaQLifestyle.run_episode(
-                    st.session_state.current_model, st.session_state.eval_env, seed=999
+                    st.session_state.current_model, initial_weight_kg=st.session_state.initial_weight_kg, days_per_episode=365 , seed=999 
                 )
 
                 df = pd.DataFrame(
@@ -347,6 +347,12 @@ with performance_chart:
             
             combined_df = pd.concat(all_histories, ignore_index=True)
 
+            avg_episode_length_df = (
+                combined_df.groupby('algorithm', as_index=False)['Day']
+                .mean()
+                .rename(columns={'Day': 'average_episode_length'})
+            )
+
             # Cumulative Reward Chart
             st.subheader("Cumulative Reward Comparison")
             combined_df['cumulative_reward'] = combined_df.groupby('algorithm')['Reward'].cumsum()
@@ -384,6 +390,21 @@ with performance_chart:
                             ))
             st.altair_chart(mean_reward_bar, use_container_width=True)
 
+            st.subheader("Average Episode Length")
+            ael_chart = (
+                alt.Chart(avg_episode_length_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X('algorithm', title='Algorithm'),
+                    y=alt.Y('average_episode_length', title='Average Day Reached'),
+                    color=alt.Color('algorithm', legend=None),
+                    tooltip=['algorithm', 'average_episode_length']
+                )
+                .properties(
+                    title='Average Episode Length (Mean Day Reached)'
+                )
+            )
+            st.altair_chart(ael_chart, use_container_width=True)
 
 
             # BMI Trajectory Chart
