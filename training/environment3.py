@@ -206,9 +206,9 @@ class LifeStyleEnv(gym.Env):
             if action in [0, 1, 2]:
 
                 meal_data = [
-                    {"calories": 350, "fiber_g": 5, "protein_ratio": 0.20, "fat_ratio": 0.25, "sat_fat_ratio": 0.05, "carbs_ratio": 0.55}, # Light meal
-                    {"calories": 775, "fiber_g": 10, "protein_ratio": 0.18, "fat_ratio": 0.26, "sat_fat_ratio": 0.06, "carbs_ratio": 0.56}, # Medium meal
-                    {"calories": 1200, "fiber_g": 15, "protein_ratio": 0.15, "fat_ratio": 0.30, "sat_fat_ratio": 0.07, "carbs_ratio": 0.55}, # Heavy meal
+                    {"calories": 350, "fiber_g": 5, "protein_ratio": 0.20, "fat_ratio": 0.20, "sat_fat_ratio": 0.05, "carbs_ratio": 0.55}, # Light meal
+                    {"calories": 775, "fiber_g": 10, "protein_ratio": 0.20, "fat_ratio": 0.20, "sat_fat_ratio": 0.05, "carbs_ratio": 0.55}, # Medium meal
+                    {"calories": 1200, "fiber_g": 15, "protein_ratio": 0.20, "fat_ratio": 0.20, "sat_fat_ratio": 0.05, "carbs_ratio": 0.55}, # Heavy meal
                 ]
 
                 selected_meal = meal_data[action]
