@@ -135,9 +135,14 @@ class LifeStyleEnv(gym.Env):
             "days_remaining": self.days_per_episode - self.state["day_of_episode"],
         }
 
-    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None, randomized: bool = False):
 
         self.state = copy.deepcopy(self.initial_state)
+
+        if randomized:
+            self.state["current_weight_kg"] = np.random.uniform(35.0, 115.0)
+            self.state["current_bmi"] = self.state["current_weight_kg"] / (self.height_cm / 100) ** 2
+        
         observation = self._get_obs()
         info = self._get_info()
 
