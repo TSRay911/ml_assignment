@@ -304,9 +304,7 @@ with current:
                 st.write(f"Reward: {step['Reward']:.2f}")
 
 
-            time.sleep(1)
-
-        st.header(f"Mean reward per step: {np.mean(st.session_state.model_rewards[st.session_state.algorithm_option])}")
+            time.sleep(0.5)
 
 with plan:
     with st.container():
@@ -377,7 +375,7 @@ with performance_chart:
                 .rename(columns={'Reward': 'mean_reward'})
             )
             
-            st.subheader("Mean Reward per Algorithm")
+            st.subheader("Mean Reward")
             mean_reward_bar = (alt.Chart(mean_rewards_df)
                             .mark_bar()
                             .encode(
