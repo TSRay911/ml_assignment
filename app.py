@@ -346,10 +346,10 @@ with performance_chart:
             
             combined_df = pd.concat(all_histories, ignore_index=True)
 
-            avg_episode_length_df = (
+            episode_length_df = (
                 combined_df.groupby('algorithm', as_index=False)['Day']
                 .max()
-                .rename(columns={'Day': 'average_episode_length'})
+                .rename(columns={'Day': 'episode_length'})
             )
 
             # Cumulative Reward Chart
@@ -389,18 +389,18 @@ with performance_chart:
                             ))
             st.altair_chart(mean_reward_bar, use_container_width=True)
 
-            st.subheader("Average Episode Length")
+            st.subheader("Episode Length")
             ael_chart = (
-                alt.Chart(avg_episode_length_df)
+                alt.Chart(episode_length_df)
                 .mark_bar()
                 .encode(
                     x=alt.X('algorithm', title='Algorithm'),
-                    y=alt.Y('average_episode_length', title='Average Day Reached'),
+                    y=alt.Y('episode_length', title='Day Reached'),
                     color=alt.Color('algorithm', legend=None),
-                    tooltip=['algorithm', 'average_episode_length']
+                    tooltip=['algorithm', 'episode_length']
                 )
                 .properties(
-                    title='Average Episode Length (Mean Day Reached)'
+                    title='Episode Length'
                 )
             )
             st.altair_chart(ael_chart, use_container_width=True)
