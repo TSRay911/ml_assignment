@@ -304,7 +304,7 @@ with current:
                 st.write(f"Reward: {step['Reward']:.2f}")
 
 
-            time.sleep(0.5)
+            time.sleep(1)
 
 with plan:
     with st.container():
